@@ -1,0 +1,9 @@
+{
+  "name": "食迹 NutriLog",
+  "short_name": "食迹",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f5f1",
+  "theme_color": "#1f6f50",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
