@@ -158,13 +158,13 @@ export function scorePeriod(args: {
       status, score, message: `期间红肉约 ${fmt(v)} g`, sources: ["wcrf", "iarc_114"],
     });
   }
-  // 加工肉（仅提示，日评分已扣分）
+  // 加工肉（仅提示；分值计入 WCRF/AICR“红肉和加工肉”一项）
   {
     const v = groups.processed_meat_g ?? 0;
     checks.push({
       key: "processed_meat_week", zh: "加工肉总量", value: v, unit: "g", targetText: "越少越好（WCRF：很少或不吃）",
       status: v <= 0 ? "good" : v <= 100 * f ? "warn" : "bad", score: 1,
-      message: v > 0 ? `期间加工肉约 ${fmt(v)} g（已在每日评分中扣分）` : "没有吃加工肉", sources: ["wcrf", "iarc_114"],
+      message: v > 0 ? `期间加工肉约 ${fmt(v)} g（计入 WCRF 防癌评分“红肉和加工肉”一项）` : "没有吃加工肉", sources: ["wcrf", "iarc_114"],
     });
   }
   // 海产（DGA：每周约 8 盎司；FDA/EPA：每周 2–3 份低汞鱼）

@@ -7,7 +7,7 @@ import type { DailyScore, DayResponse, DraftItem, Food, MealDraft, MealItem, Vec
 import { MEAL_TYPES, fmt, guessMealType, nowTime, localToday } from "../lib/format";
 import { Modal, Seg, Empty } from "../components/ui";
 import { ItemEditor } from "../components/ItemEditor";
-import { ImpactPreview } from "../components/ActivityRecognizer";
+import { ImpactPreview, type DayPreview } from "../components/ActivityRecognizer";
 
 const scale = (v: Vec, f: number): Vec => Object.fromEntries(Object.entries(v).map(([k, x]) => [k, x * f]));
 
@@ -124,14 +124,14 @@ export default function LogMeal() {
   }
 
   // 合并预览：草稿变化时（改克数、删项、改数值）重新计算当天评分，确认前不写入
-  const [preview, setPreview] = useState<{ before: DailyScore; after: DailyScore } | null>(null);
+  const [preview, setPreview] = useState<DayPreview | null>(null);
   useEffect(() => {
     if (phase !== "review" || !items.length) {
       setPreview(null);
       return;
     }
     const t = setTimeout(() => {
-      api.post<{ before: DailyScore; after: DailyScore }>("/preview", { date, meal: { meal_type: mealType, time, items, replace_meal_id: editId } })
+      api.post<DayPreview>("/preview", { date, meal: { meal_type: mealType, time, items, replace_meal_id: editId } })
         .then(setPreview)
         .catch(() => setPreview(null));
     }, 400);
@@ -263,7 +263,7 @@ export default function LogMeal() {
                   onSave={() => setSaveItem(idx)} />
               ))}
             </div>
-            {preview && items.length > 0 && <div style={{ marginTop: 14 }}><ImpactPreview before={preview.before} after={preview.after} /></div>}
+            {preview && items.length > 0 && <div style={{ marginTop: 14 }}><ImpactPreview before={preview.before} after={preview.after} indices={preview.indices} /></div>}
             {items.length > 0 && (
               <>
                 <hr />

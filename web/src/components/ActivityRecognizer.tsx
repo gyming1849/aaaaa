@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Camera, Sparkles, Trash2, Plus, Check, ArrowRight } from "lucide-react";
 import { api, uploadPhotos, waitJob } from "../api";
 import { useApp } from "../lib/app";
-import type { ActivityDay, DailyScore } from "../types";
+import type { ActivityDay, DailyScore, HealthIndices } from "../types";
 import { fmt } from "../lib/format";
 import { Modal } from "./ui";
 
@@ -68,7 +68,7 @@ export function ActivityRecognizer({ date, current, mode, onClose, onDone }: {
         }
       : null,
   );
-  const [preview, setPreview] = useState<{ before: DailyScore; after: DailyScore } | null>(null);
+  const [preview, setPreview] = useState<DayPreview | null>(null);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -83,7 +83,7 @@ export function ActivityRecognizer({ date, current, mode, onClose, onDone }: {
   useEffect(() => {
     if (!draft) return;
     const t = setTimeout(() => {
-      api.post<{ before: DailyScore; after: DailyScore }>("/preview", { date: draft.date, activity: draft.activity, body: draft.body, workouts: draft.workouts })
+      api.post<DayPreview>("/preview", { date: draft.date, activity: draft.activity, body: draft.body, workouts: draft.workouts })
         .then(setPreview)
         .catch(() => setPreview(null));
     }, 350);
@@ -230,7 +230,7 @@ export function ActivityRecognizer({ date, current, mode, onClose, onDone }: {
               ))}
             </div>
           </div>
-          {preview && <ImpactPreview before={preview.before} after={preview.after} />}
+          {preview && <ImpactPreview before={preview.before} after={preview.after} indices={preview.indices} />}
         </div>
       )}
     </Modal>
@@ -238,11 +238,19 @@ export function ActivityRecognizer({ date, current, mode, onClose, onDone }: {
 }
 
 /** 合并前后对比：评分、能量、关键营养与状态变化 */
-export function ImpactPreview({ before, after }: { before: DailyScore; after: DailyScore }) {
-  type Row = { label: string; b: number | null; a: number | null; unit: string; d?: number; better?: "up" | "down" };
+export function ImpactPreview({ before, after, indices }: { before: DailyScore; after: DailyScore; indices?: PreviewIndices }) {
+  type Row = { label: string; b: number | null; a: number | null; unit: string; d?: number; better?: "up" | "down"; always?: boolean };
+  const ib = indices?.before;
+  const ia = indices?.after;
   const all: Row[] = [
-    { label: "膳食质量 HEI-2020", b: before.score, a: after.score, unit: "", d: 1, better: "up" },
+    { label: "膳食质量 HEI-2020", b: before.score, a: after.score, unit: "", d: 1, better: "up", always: true },
     { label: "微量营养素 MAR", b: before.mar?.value ?? null, a: after.mar?.value ?? null, unit: "", d: 0, better: "up" },
+    ...(ib && ia
+      ? [
+          { label: "心血管健康 LE8（近 7 天）", b: ib.le8.score, a: ia.le8.score, unit: "", d: 0, better: "up", always: true } as Row,
+          { label: "防癌 WCRF/AICR（近 7 天）", b: ib.wcrf.score, a: ia.wcrf.score, unit: `/ ${ia.wcrf.max}`, d: 2, better: "up" } as Row,
+        ]
+      : []),
     { label: "摄入能量", b: before.energy.intake, a: after.energy.intake, unit: "kcal" },
     { label: "当日消耗", b: before.energy.tdee, a: after.energy.tdee, unit: "kcal" },
     { label: "能量差额", b: before.energy.intake - before.energy.tdee, a: after.energy.intake - after.energy.tdee, unit: "kcal" },
@@ -252,12 +260,18 @@ export function ImpactPreview({ before, after }: { before: DailyScore; after: Da
     { label: "蛋白质", b: before.totals.protein_g, a: after.totals.protein_g, unit: "g", d: 1, better: "up" },
     { label: "膳食纤维", b: before.totals.fiber_g, a: after.totals.fiber_g, unit: "g", d: 1, better: "up" },
   ];
-  const rows = all.filter((r) => Math.abs((r.a ?? 0) - (r.b ?? 0)) > 0.05 || r.label === "膳食质量 HEI-2020");
+  const rows = all.filter((r) => Math.abs((r.a ?? 0) - (r.b ?? 0)) > 0.05 || r.always);
   const beforeStatus = new Map(before.items.map((i) => [i.key, i.status]));
-  const flips = after.items.filter((i) => i.status !== "info" && beforeStatus.get(i.key) && beforeStatus.get(i.key) !== i.status);
+  const flips = after.items.filter((i) => i.status !== "info" && beforeStatus.get(i.key) && statusZh(beforeStatus.get(i.key)!) !== statusZh(i.status));
+  const le8Changes = ib && ia
+    ? ia.le8.components.filter((c) => {
+        const old = ib.le8.components.find((x) => x.key === c.key)?.points ?? null;
+        return old !== c.points;
+      }).map((c) => `${c.zh} ${ib.le8.components.find((x) => x.key === c.key)?.points ?? "—"} → ${c.points ?? "—"}`)
+    : [];
   const newHazards = after.hazards.filter((h) => !before.hazards.some((x) => x.key === h.key));
   const tone = (r: Row) => {
-    if (r.a == null || r.b == null || !r.better) return "var(--ink)";
+    if (r.a == null || r.b == null || !r.better || Math.abs(r.a - r.b) <= 0.05) return "var(--ink)";
     const up = r.a > r.b;
     return (r.better === "up") === up ? "var(--good-text)" : "var(--critical-text)";
   };
@@ -282,7 +296,12 @@ export function ImpactPreview({ before, after }: { before: DailyScore; after: Da
       {flips.length > 0 && (
         <div className="small" style={{ marginTop: 10 }}>
           <b>状态变化：</b>
-          {flips.map((i) => `${i.zh}（${statusZh(beforeStatus.get(i.key)!)} → ${statusZh(i.status)}）`).join("；")}
+          {flips.map((i) => `${i.category === "hei" ? "HEI·" : ""}${i.zh}（${statusZh(beforeStatus.get(i.key)!)} → ${statusZh(i.status)}）`).join("；")}
+        </div>
+      )}
+      {le8Changes.length > 0 && (
+        <div className="small" style={{ marginTop: 6 }}>
+          <b>LE8 分项：</b>{le8Changes.join("；")}
         </div>
       )}
       {newHazards.length > 0 && (
@@ -293,5 +312,8 @@ export function ImpactPreview({ before, after }: { before: DailyScore; after: Da
     </div>
   );
 }
+
+export type PreviewIndices = { before: HealthIndices; after: HealthIndices };
+export type DayPreview = { before: DailyScore; after: DailyScore; indices?: PreviewIndices };
 
 const statusZh = (s: string) => ({ good: "达标", ok: "达标", warn: "偏离", bad: "不达标", info: "提示" })[s] ?? s;

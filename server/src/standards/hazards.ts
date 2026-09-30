@@ -244,7 +244,7 @@ export const HAZARDS: HazardDef[] = [
   },
   {
     key: "aspartame",
-    zh: "阿斯巴甜(超过 ADI 时扣分)",
+    zh: "阿斯巴甜(超过 ADI 时警示)",
     en: "Aspartame",
     iarc: "2B",
     category: "carcinogen",

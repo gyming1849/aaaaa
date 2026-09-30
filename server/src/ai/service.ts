@@ -214,8 +214,12 @@ export async function analyzeMeal(
     const items: DraftItem[] = [];
     // 离线模式下，优先使用食物库命中项
     for (const c of candidates) items.push(itemFromFood(c, c.serving_g ?? 100));
+    // 去掉括号里的说明再比较（“螺蛳粉（袋装）”与“柳州螺蛳粉”视为同一种），别名也参与比较
+    const core = (s: string) => s.replace(/[（(][^）)]*[）)]/g, "").trim().toLowerCase();
+    const libNames = candidates.flatMap((c) => [c.name, ...c.aliases.split(/[,，、\s]+/)].map(core).filter((s) => s.length >= 2));
     for (const it of r.items) {
-      if (candidates.some((c) => it.name.includes(c.name) || c.name.includes(it.name))) continue;
+      const n = core(it.name);
+      if (n.length >= 2 && libNames.some((ln) => n.includes(ln) || ln.includes(n))) continue;
       items.push(draftFromRaw(userId, it as unknown as Record<string, unknown>, allow));
     }
     return { items, summary: r.summary, assumptions: r.assumptions, questions: r.questions, sources: [], provider: "mock", model: "offline" };

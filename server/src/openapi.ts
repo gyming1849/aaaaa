@@ -95,10 +95,13 @@ const OPS: Record<string, Record<string, Op>> = {
         date,
         meal: obj({ meal_type: str(), time, items: arr(ref("MealItem")), replace_meal_id: int("编辑已有餐食时传入") }),
         activity: ref("Activity"),
-        body: obj({ weight_kg: nnum() }),
+        body: obj({ weight_kg: nnum(), sbp: nnum(), dbp: nnum(), bp_treated: { type: "boolean" } }),
         workouts: arr(ref("Workout")),
       }),
-      response: obj({ date, before: ref("DailyScore"), after: ref("DailyScore") }),
+      response: obj({
+        date, before: ref("DailyScore"), after: ref("DailyScore"),
+        indices: obj({ before: ref("HealthIndices"), after: ref("HealthIndices") }),
+      }),
     },
   },
   "/meals": { post: { tag: "饮食", summary: "保存一餐（确认合并）", body: ref("MealInput"), response: obj({ id: int() }) } },
@@ -110,9 +113,9 @@ const OPS: Record<string, Record<string, Op>> = {
   "/water": { post: { tag: "饮食", summary: "快速记录饮水（当天累加，可为负数撤销）", body: obj({ date, ml: num() }, ["ml"]), response: obj({ ok: { type: "boolean" }, total_ml: num() }) } },
   "/day/{date}": {
     get: {
-      tag: "报告", summary: "某一天的完整数据：餐食、评分、目标、活动、运动、身体指标",
+      tag: "报告", summary: "某一天的完整数据：餐食、评分（HEI-2020 + MAR）、近 7 天 LE8 / WCRF、目标、活动、运动、身体指标",
       params: [{ name: "date", in: "path", schema: date, required: true }, userParam],
-      response: obj({ date, score: ref("DailyScore"), targets: ref("Targets"), meals: arr(ref("Meal")), activity: ref("Activity"), exercises: arr(ref("Exercise")), body: arr(ref("BodyMetric")), weightTrend: nnum() }),
+      response: obj({ date, score: ref("DailyScore"), targets: ref("Targets"), meals: arr(ref("Meal")), activity: ref("Activity"), exercises: arr(ref("Exercise")), body: arr(ref("BodyMetric")), weightTrend: nnum(), indices: ref("HealthIndices") }),
     },
   },
 
@@ -191,6 +194,12 @@ function schemas(): Record<string, S> {
     }, ["sex", "birth_date", "height_cm", "weight_kg"]),
     Targets: obj({}),
     DailyScore: obj({}),
+    HealthIndices: obj({
+      windowDays: int(), loggedDays: int(),
+      le8: obj({ score: nnum(), available: int(), components: arr(obj({ key: str(), zh: str(), points: nnum(), value: str(), rule: str(), missing: str() })) }),
+      wcrf: obj({ score: nnum(), max: num(), components: arr(obj({})) }),
+      mepa: obj({ score: int(), days: int(), items: arr(obj({})) }),
+    }),
     PeriodScore: obj({}),
     Activity: obj({ date, steps: nnum(), active_kcal: nnum(), resting_kcal: nnum(), distance_km: nnum(), exercise_min: nnum(), sleep_hours: nnum(), stand_hours: nnum(), source: str() }),
     Workout: obj({

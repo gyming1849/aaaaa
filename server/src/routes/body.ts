@@ -295,7 +295,10 @@ bodyRouter.post(
         )
       : null;
     const bodyWeight = num(b.body?.weight_kg, { min: 20, max: 350, optional: true });
+    const sbp = num(b.body?.sbp, { min: 60, max: 260, optional: true });
+    const dbp = num(b.body?.dbp, { min: 30, max: 160, optional: true });
     const r = previewDay(uid, date, {
+      bp: sbp != null && dbp != null ? { sbp, dbp, treated: !!b.body?.bp_treated } : null,
       meal: items ? { meal_type: String(b.meal.meal_type ?? "other"), time: String(b.meal.time ?? "12:00"), items, replace_meal_id: Number(b.meal.replace_meal_id) || null } : undefined,
       activity: b.activity ? cleanActivity(b.activity) : undefined,
       weight_kg: bodyWeight,
@@ -336,8 +339,8 @@ bodyRouter.post(
       }
       if (w != null || fat != null || sbp != null) {
         run(
-          "INSERT INTO body_metrics (user_id, date, time, weight_kg, body_fat_pct, sbp, dbp, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-          uid, date, str(body.time, { optional: true }) || "22:00", w, fat, sbp, dbp, source,
+          "INSERT INTO body_metrics (user_id, date, time, weight_kg, body_fat_pct, sbp, dbp, bp_treated, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          uid, date, str(body.time, { optional: true }) || "22:00", w, fat, sbp, dbp, body.bp_treated ? 1 : 0, source,
         );
         invalidateFrom(uid, date);
       }

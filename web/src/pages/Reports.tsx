@@ -61,16 +61,17 @@ export default function Reports() {
       {loading && !data && <Loading />}
       {data && (
         <div className="stack" style={{ opacity: loading ? 0.55 : 1 }}>
-          <div className="grid g-hero">
+          <div className="grid g-hero" style={{ alignItems: "start" }}>
             <Le8Card ix={data.indices} title="周期总分：心血管健康 LE8" subtitle={`AHA Life's Essential 8 · ${data.daysLogged}/${data.days} 天有记录`} />
-            <AiSummary data={data} gen={gen} onGenerate={generate} provider={me?.ai.provider ?? "mock"} />
-          </div>
-
-          <div className="grid g4">
-            <div className="card stat-card"><div className="stat"><span className="label">HEI-2020（按周期总摄入）</span><span className="value">{fmt(data.hei?.total, 1)}<small>/ 100</small></span><span className="delta">美国人平均 58</span></div></div>
-            <div className="card stat-card"><div className="stat"><span className="label">HEI-2020 日均</span><span className="value">{fmt(data.avgHei, 1)}<small>/ 100</small></span></div></div>
-            <div className="card stat-card"><div className="stat"><span className="label">微量营养素 MAR 日均</span><span className="value">{fmt(data.avgMar)}<small>/ 100</small></span></div></div>
-            <div className="card stat-card"><div className="stat"><span className="label">防癌建议 WCRF/AICR</span><span className="value">{fmt(data.indices.wcrf.score, 2)}<small>/ {data.indices.wcrf.max}</small></span></div></div>
+            <div className="stack">
+              <div className="grid" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+                <div className="card stat-card"><div className="stat"><span className="label">HEI-2020（按周期总摄入）</span><span className="value">{fmt(data.hei?.total, 1)}<small>/ 100</small></span><span className="delta">美国人平均 58</span></div></div>
+                <div className="card stat-card"><div className="stat"><span className="label">HEI-2020 日均</span><span className="value">{fmt(data.avgHei, 1)}<small>/ 100</small></span></div></div>
+                <div className="card stat-card"><div className="stat"><span className="label">微量营养素 MAR 日均</span><span className="value">{fmt(data.avgMar)}<small>/ 100</small></span></div></div>
+                <div className="card stat-card"><div className="stat"><span className="label">防癌建议 WCRF/AICR</span><span className="value">{fmt(data.indices.wcrf.score, 2)}<small>/ {data.indices.wcrf.max}</small></span></div></div>
+              </div>
+              <AiSummary data={data} gen={gen} onGenerate={generate} provider={me?.ai.provider ?? "mock"} />
+            </div>
           </div>
 
           <WcrfCard ix={data.indices} subtitle={`${data.start} 至 ${data.end}`} />

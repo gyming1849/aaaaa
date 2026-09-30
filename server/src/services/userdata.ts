@@ -1,7 +1,7 @@
 // 从数据库装载用户数据、计算并缓存评分。
 
 import { db, parseJson, all, get } from "../db/index.ts";
-import { computeIndices, type HealthIndices } from "../scoring/indices.ts";
+import { computeIndices, type HealthIndices, type IndicesInput } from "../scoring/indices.ts";
 import { sanitizeVector, NUTRIENT_KEYS, FOOD_GROUP_KEYS } from "../standards/nutrients.ts";
 import { computeTargets, type Profile, type Targets } from "../standards/targets.ts";
 import { scoreDay, SCORING_VERSION } from "../scoring/daily.ts";
@@ -169,7 +169,19 @@ export function invalidateAll(userId: number) {
 }
 
 /** 计算窗口 [start, end] 的 LE8 / MEPA / WCRF（身体指标取截至 end 的最近记录） */
+type BpRow = { sbp: number; dbp: number; bp_treated: number };
+
+/** 血压：最近 3 次读数取平均 */
+function avgBp(bps: BpRow[]): IndicesInput["bp"] {
+  if (!bps.length) return null;
+  return { sbp: bps.reduce((a, b) => a + b.sbp, 0) / bps.length, dbp: bps.reduce((a, b) => a + b.dbp, 0) / bps.length, treated: bps.some((b) => b.bp_treated), n: bps.length };
+}
+
 export function getIndices(userId: number, start: string, end: string, p: Profile, days?: DailyScore[]): HealthIndices {
+  return computeIndices(loadIndicesInput(userId, start, end, p, days).input);
+}
+
+function loadIndicesInput(userId: number, start: string, end: string, p: Profile, days?: DailyScore[]): { input: IndicesInput; bps: BpRow[] } {
   const scores = days ?? getDailyScores(userId, start, end, p);
   const exercises = db
     .prepare("SELECT * FROM exercises WHERE user_id = ? AND date BETWEEN ? AND ?")
@@ -183,7 +195,7 @@ export function getIndices(userId: number, start: string, end: string, p: Profil
     userId, end, addDays(end, -180),
   );
   // 血压：截至 end 的 90 天内最近 3 次读数取平均
-  const bps = all<{ sbp: number; dbp: number; bp_treated: number }>(
+  const bps = all<BpRow>(
     "SELECT sbp, dbp, bp_treated FROM body_metrics WHERE user_id = ? AND date <= ? AND date >= ? AND sbp IS NOT NULL AND dbp IS NOT NULL ORDER BY date DESC, time DESC LIMIT 3",
     userId, end, addDays(end, -90),
   );
@@ -191,18 +203,17 @@ export function getIndices(userId: number, start: string, end: string, p: Profil
     "SELECT date, non_hdl, lipid_treated, fasting_glucose, hba1c, diabetes FROM lab_results WHERE user_id = ? AND date <= ? ORDER BY date DESC, id DESC LIMIT 1",
     userId, end,
   );
-  return computeIndices({
+  const input: IndicesInput = {
     days: scores,
     exercises,
     activity,
     profile: p,
     weightKg: weightOn(weights, end, p.weight_kg),
     waistCm: waist?.waist_cm ?? null,
-    bp: bps.length
-      ? { sbp: bps.reduce((a, b) => a + b.sbp, 0) / bps.length, dbp: bps.reduce((a, b) => a + b.dbp, 0) / bps.length, treated: bps.some((b) => b.bp_treated), n: bps.length }
-      : null,
+    bp: avgBp(bps),
     lab: lab ? { ...lab, lipid_treated: !!lab.lipid_treated, diabetes: !!lab.diabetes } : null,
-  });
+  };
+  return { input, bps };
 }
 
 export function getPeriod(userId: number, start: string, end: string): PeriodScore | null {
@@ -237,9 +248,18 @@ export interface DayPatch {
   weight_kg?: number | null;
   /** 新增运动 */
   workouts?: ExerciseRecord[];
+  /** 新增血压读数 */
+  bp?: { sbp: number; dbp: number; treated: boolean } | null;
 }
 
-export function previewDay(userId: number, date: string, patch: DayPatch): { before: DailyScore; after: DailyScore } | null {
+export interface DayPreview {
+  before: DailyScore;
+  after: DailyScore;
+  /** 近 7 天（含当天）的 LE8 / WCRF：合并前后 */
+  indices: { before: HealthIndices; after: HealthIndices };
+}
+
+export function previewDay(userId: number, date: string, patch: DayPatch): DayPreview | null {
   const p = getProfile(userId);
   if (!p) return null;
   const [day] = loadDays(userId, date, date, p);
@@ -260,5 +280,18 @@ export function previewDay(userId: number, date: string, patch: DayPatch): { bef
   }
   if (patch.workouts?.length) next.exercises.push(...patch.workouts);
   const after = scoreDay(next, p, computeTargets(p, date, next.weightKg));
-  return { before, after };
+
+  // 近 7 天滚动的 LE8 / WCRF：把同样的修改套到窗口数据上重算
+  const { input, bps } = loadIndicesInput(userId, addDays(date, -6), date, p);
+  const patched: IndicesInput = {
+    ...input,
+    days: input.days.map((d) => (d.date === date ? after : d)),
+    exercises: [...input.exercises, ...(patch.workouts ?? []).map((w) => ({ ...w, date }))],
+    activity: patch.activity
+      ? [...input.activity.filter((a) => a.date !== date), { ...(next.activity as ActivityRecord), date }]
+      : input.activity,
+    weightKg: patch.weight_kg ?? input.weightKg,
+    bp: patch.bp ? avgBp([{ sbp: patch.bp.sbp, dbp: patch.bp.dbp, bp_treated: patch.bp.treated ? 1 : 0 }, ...bps].slice(0, 3)) : input.bp,
+  };
+  return { before, after, indices: { before: computeIndices(input), after: computeIndices(patched) } };
 }
