@@ -100,6 +100,38 @@ export const exerciseSchema: Schema = obj({
   assumptions: arr(str()),
 });
 
+const nullableNum = (description: string): Schema => ({ anyOf: [{ type: "number" }, { type: "null" }], description });
+
+/** 身体与活动识别：文字（“今天走了 8000 步、游泳 5km、睡了 7 小时”）或苹果健康/手表/体脂秤截图 */
+export const activitySchema: Schema = obj({
+  date: { anyOf: [{ type: "string", format: "date" }, { type: "null" }], description: "截图或文字中明确显示的日期 YYYY-MM-DD；看不出来填 null" },
+  steps: nullableNum("当天总步数"),
+  distance_km: nullableNum("步行+跑步距离 km（英里需换算）"),
+  active_kcal: nullableNum("活动能量 / 动态消耗 kcal（kJ 需换算：kcal = kJ ÷ 4.184）"),
+  resting_kcal: nullableNum("静息能量 kcal；若只给“总消耗”，静息 = 总消耗 − 活动能量"),
+  exercise_min: nullableNum("锻炼分钟（Apple 绿色圆环）"),
+  stand_hours: nullableNum("站立小时"),
+  sleep_hours: nullableNum("前一晚睡眠时长（小时，含小数）"),
+  weight_kg: nullableNum("体重 kg（斤需 ÷2，磅需 ×0.4536）"),
+  body_fat_pct: nullableNum("体脂率 %"),
+  sbp: nullableNum("收缩压 mmHg"),
+  dbp: nullableNum("舒张压 mmHg"),
+  workouts: arr(
+    obj({
+      description: str("活动描述（中文）"),
+      activity_key: { type: "string", enum: ACTIVITIES.map((a) => a.key) },
+      met: num("MET（参考 2024 Compendium，可按配速/心率调整强度）"),
+      duration_min: num("持续时间（分钟）；只给距离时按合理速度推算"),
+      distance_km: num("距离 km，未知填 0"),
+      avg_hr: nullableNum("平均心率（截图中有才填）"),
+      device_kcal: nullableNum("设备显示的该次运动“活动千卡”（截图中有才填）"),
+      from_device: { type: "boolean", description: "该运动是否由手表/手机记录（截图来源为 true；用户口述为 false）" },
+      notes: str("识别/推算依据，不要写卡路里数字"),
+    }),
+  ),
+  notes: str("整体说明：从哪里读到了哪些数；哪些无法识别"),
+});
+
 export const weeklySummarySchema: Schema = obj({
   headline: str("一句话标题"),
   summary: str("2–4 句总体点评"),

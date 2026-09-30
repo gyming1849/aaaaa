@@ -16,6 +16,7 @@ export interface ItemRecord {
   groups: NutrientVector;
   hazards: HazardEntry[];
   nova_group: number | null;
+  category?: string | null;
 }
 
 export interface MealRecord {
@@ -31,6 +32,8 @@ export interface ActivityRecord {
   resting_kcal: number | null;
   distance_km: number | null;
   exercise_min: number | null;
+  sleep_hours?: number | null;
+  stand_hours?: number | null;
   source: string;
 }
 
@@ -59,7 +62,8 @@ export type Status = "good" | "ok" | "warn" | "bad" | "info";
 
 export interface ScoreItem {
   key: string;
-  category: "hei" | "adequacy" | "moderation" | "energy";
+  /** hei = HEI-2020 组分（有官方分值）；mar = MAR 计分营养素；adequacy / moderation / energy = 只标状态的检查项 */
+  category: "hei" | "mar" | "adequacy" | "moderation" | "energy";
   zh: string;
   value: number;
   unit: string;
@@ -71,6 +75,7 @@ export interface ScoreItem {
   status: Status;
   /** 0–1 */
   score: number;
+  /** 仅 HEI-2020 组分有：官方分值 */
   points: number;
   maxPoints: number;
   message: string;
@@ -83,7 +88,6 @@ export interface HazardResult {
   iarc: string;
   dose: number;
   unit: string;
-  penalty: number;
   foods: string[];
   message: string;
   sources: string[];
@@ -104,25 +108,30 @@ export interface EnergyResult {
 }
 
 export interface CategoryResult {
-  key: "hei" | "adequacy" | "moderation" | "energy";
+  key: "hei" | "mar";
   zh: string;
-  weight: number;
   /** 0–100 */
   score: number;
-  points: number;
-  maxPoints: number;
+  source: string;
+  note: string;
+}
+
+export interface MarResult {
+  /** 0–100 */
+  value: number;
+  nutrients: { key: string; zh: string; intake: number; target: number; nar: number }[];
 }
 
 export interface DailyScore {
   date: string;
   hasData: boolean;
+  /** 当日膳食质量 = HEI-2020 总分（0–100） */
   score: number | null;
-  grade: { key: string; zh: string } | null;
   categories: CategoryResult[];
   items: ScoreItem[];
   hei: { total: number; components: { key: string; zh: string; score: number; max: number; value: number; unit: string; hint: string }[] } | null;
+  mar: MarResult | null;
   hazards: HazardResult[];
-  hazardPenalty: number;
   energy: EnergyResult;
   totals: NutrientVector;
   groups: NutrientVector;
@@ -130,6 +139,7 @@ export interface DailyScore {
   upfPct: number;
   mealCount: number;
   itemCount: number;
+  fastFoodMeals: number;
   completeness: { level: "none" | "partial" | "likely"; note: string };
   top: { issues: string[]; wins: string[] };
   weightKg: number;

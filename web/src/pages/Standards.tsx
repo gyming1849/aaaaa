@@ -152,7 +152,7 @@ function HazardList() {
   if (!meta) return <Loading />;
   return (
     <div className="stack">
-      <div className="banner">IARC 分级表示“证据强度”而不是“危险程度”：加工肉与吸烟同属 1 类，意味着致癌证据同样充分，而不是危害同样大。本站按剂量扣分，并设单项与总计上限（每日最多扣 {meta.hazardTotalCap} 分）。</div>
+      <div className="banner">IARC 分级表示“证据强度”而不是“危险程度”：加工肉与吸烟同属 1 类，意味着致癌证据同样充分，而不是危害同样大。没有权威机构发布过把这些分级换算成扣分的方法，所以本站只按剂量给出警示、不另设扣分；其中加工肉、红肉、酒精、含糖饮料按 WCRF/AICR 标准化评分计分。</div>
       <div className="grid g2">
         {meta.hazards.map((h) => (
           <div className="card col" key={h.key} style={{ gap: 8 }}>
@@ -160,20 +160,16 @@ function HazardList() {
             <div className="small"><b>风险：</b>{h.risk}</div>
             <div className="small"><b>判定：</b>{h.detect}</div>
             <div className="small sec"><b>例：</b>{h.examples}</div>
-            <div className="small">
-              <b>扣分：</b>
-              {h.key === "aspartame" ? `超过按体重计算的 ADI（40 mg/kg）扣 ${h.cap} 分` : `每 ${h.refAmount} ${h.dose.unit} 扣 ${h.penaltyPerRef} 分${h.freeAmount ? `（前 ${h.freeAmount} ${h.dose.unit} 免扣）` : ""}，每日最多 ${h.cap} 分${h.sensitiveMultiplier ? `；孕期/哺乳期/未成年 ×${h.sensitiveMultiplier}` : ""}`}
-            </div>
             <div className="small" style={{ color: "var(--accent-text)" }}><b>建议：</b>{h.advice}</div>
             <SourceLinks ids={h.sources} sources={meta.sources} />
           </div>
         ))}
       </div>
       <div className="card">
-        <div className="card-head"><h3>已知但不计分的项目</h3></div>
+        <div className="card-head"><h3>已知但不警示的项目</h3></div>
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>项目</th><th>分级</th><th>常见来源</th><th>不计分原因</th></tr></thead>
+            <thead><tr><th>项目</th><th>分级</th><th>常见来源</th><th>原因</th></tr></thead>
             <tbody>
               {meta.hazardsInfoOnly.map((h) => (
                 <tr key={h.zh}><td>{h.zh}</td><td>{h.iarc === "3" ? <span className="chip">IARC 3 类</span> : <IarcChip group={h.iarc} />}</td><td className="small">{h.examples}</td><td className="small sec">{h.why}</td></tr>
@@ -233,40 +229,65 @@ function MetTable() {
   );
 }
 
+const LE8_TABLE: [string, string][] = [
+  ["饮食", "个人用 MEPA 16 题问卷：15–16 → 100；12–14 → 80；8–11 → 50；4–7 → 25；0–3 → 0（本站由饮食记录自动推算每周份数）"],
+  ["身体活动（分钟/周，高强度 ×2）", "≥150 → 100；120–149 → 90；90–119 → 80；60–89 → 60；30–59 → 40；1–29 → 20；0 → 0"],
+  ["尼古丁暴露", "从不 100；戒 ≥5 年 75；戒 1–5 年 50；戒 <1 年或电子烟 25；吸烟 0；家中有人室内吸烟 −20"],
+  ["睡眠（小时/晚）", "7–<9 → 100；9–<10 → 90；6–<7 → 70；5–<6 或 ≥10 → 40；4–<5 → 20；<4 → 0"],
+  ["BMI", "<25 → 100；25–29.9 → 70；30–34.9 → 30；35–39.9 → 15；≥40 → 0"],
+  ["非 HDL 胆固醇（mg/dL）", "<130 → 100；130–159 → 60；160–189 → 40；190–219 → 20；≥220 → 0；服药 −20"],
+  ["血糖", "无糖尿病：空腹 <100 或 HbA1c <5.7 → 100；100–125 或 5.7–6.4 → 60；糖尿病：HbA1c <7 → 40，7–7.9 → 30，8–8.9 → 20，9–9.9 → 10，≥10 → 0"],
+  ["血压（mmHg）", "<120/<80 → 100；120–129/<80 → 75；130–139 或 80–89 → 50；140–159 或 90–99 → 25；≥160 或 ≥100 → 0；服药 −20"],
+];
+
+const WCRF_TABLE: [string, string][] = [
+  ["保持健康体重", "BMI 18.5–24.9 → 0.5，25–29.9 → 0.25；腰围 男 <94 / 女 <80 cm → 0.5，男 94–101.9 / 女 80–87.9 → 0.25（只有一项时分数加倍）"],
+  ["积极运动", "中高强度 ≥150 分钟/周 → 1；75–149 → 0.5；<75 → 0"],
+  ["多吃全谷物、蔬菜、水果、豆类", "果蔬 ≥400 g/天 → 0.5（200–399 → 0.25）；膳食纤维 ≥30 g/天 → 0.5（15–29 → 0.25）"],
+  ["少吃快餐和加工食品", "原文按研究人群内超加工供能比的三分位数评分，没有绝对切点 —— 本站只展示、不计分"],
+  ["限制红肉和加工肉", "红肉 ≤500 g/周且加工肉 <21 g/周 → 1；加工肉 21–99 g/周 → 0.5；红肉 >500 或加工肉 ≥100 → 0"],
+  ["限制含糖饮料", "0 → 1；≤250 ml/天 → 0.5；>250 → 0"],
+  ["限制饮酒", "不饮酒 → 1；男 ≤28 / 女 ≤14 g 纯酒精/天 → 0.5；以上 → 0"],
+];
+
 function Rules() {
   const { meta } = useApp();
   if (!meta) return <Loading />;
-  const cw = meta.categoryWeights;
   return (
     <div className="stack">
+      <div className="banner accent" style={{ fontSize: 14.5 }}>
+        评分规则 v2：全部采用已发表、经同行评议的评分体系，不自定权重。“美国心脏协会 LE8”“WCRF/AICR”“MAR”都是等权合成；HEI-2020 的组分分值由 USDA 规定。
+      </div>
       <div className="card stack">
-        <h2>每日综合分（0–100）</h2>
-        <div className="banner accent" style={{ fontSize: 14.5 }}>
-          综合分 = 膳食质量 × {cw.hei.weight}% + 营养素充足 × {cw.adequacy.weight}% + 限量控制 × {cw.moderation.weight}% + 能量平衡 × {cw.energy.weight}% − 致癌/风险物扣分（≤ {meta.hazardTotalCap}）
-        </div>
+        <h2>每日：膳食质量 HEI-2020 + 微量营养素 MAR</h2>
         <dl className="kv">
-          <dt>A 膳食质量</dt><dd>直接使用 HEI-2020 总分（0–100）。</dd>
-          <dt>B 营养素充足</dt><dd>对照你的 RDA/AI，每项得分 = min(1, 摄入 ÷ 目标)，按权重加权平均。DGA 列出的“公共健康关注营养素”（蛋白质、膳食纤维、钾、钙、维生素 D）权重 ×2；育龄女性和孕妇的铁、孕妇的叶酸权重 ×2。≥100% 达标，70–100% 偏离，&lt;70% 不达标。</dd>
-          <dt>C 限量控制</dt><dd>钠、添加糖、饱和脂肪（权重各 3）、酒精（2）、反式脂肪、咖啡因、超加工食品供能比、每餐添加糖 ≤10 g（各 1）、三大营养素 AMDR（各 0.5）、超过 UL 的营养素（每项 1，得 0 分）。<br />
-            得分曲线：≤ 理想值 得满分；理想值 → 上限 线性降到 0.7；超过上限后线性下降，到 2 倍上限为 0。例：钠上限 2300、理想 1500 mg，吃到 3450 mg（超 50%）该项只得 0.35，折合少得约 3 分。</dd>
-          <dt>D 能量平衡</dt><dd>今日目标 = 当日消耗 ± 目标调整（减重每周 0.5 kg ≈ −550 kcal/天），不低于 BMR 与 1200/1500 kcal。偏差 ≤10% 满分，偏差 50% 得 0 分。</dd>
-          <dt>风险物扣分</dt><dd>按剂量扣分：加工肉每 50 g 扣 6 分（WHO：每天 50 g 结直肠癌风险 +18%），红肉超出日均 70 g 的部分每 100 g 扣 3 分，酒精每标准杯（14 g）扣 2 分，炭烤/烟熏/油炸淀粉/腌菜/咸鱼/槟榔等按份量扣分，各有上限。详见“致癌物与风险物”。</dd>
-          <dt>和体重年龄挂钩的项</dt><dd>能量（NASEM 2023 EER：年龄、身高、体重、性别、活动水平）、蛋白质（g/kg）、膳食纤维（14 g/1000 kcal × 能量目标）、所有 DRI（按年龄性别分 20 个人群）、咖啡因（未成年人 2.5 mg/kg）、阿斯巴甜 ADI（40 mg/kg）、反式脂肪（能量的 1%）、添加糖上限（能量的 10%）。</dd>
+          <dt>今日膳食质量</dt><dd>HEI-2020 总分（USDA / NCI）。13 个组分按每 1000 kcal 的密度在“零分标准”与“满分标准”之间线性计分，分值见“HEI-2020”标签页。例如钠 ≤1.1 g/1000 kcal 得 10 分，≥2.0 g 得 0 分，页面会写明“钠组分扣 x 分”。美国人平均 {meta.heiUsMean} 分（NHANES 2017–2018）。</dd>
+          <dt>微量营养素 MAR</dt><dd>平均充足比（Madden & Yoder 1972；FAO 最低膳食多样性验证研究采用的 11 种微量营养素：{meta.marNutrients.map((k) => meta.nutrients.find((n) => n.key === k)?.zh).join("、")}）。每种 NAR = min(摄入 ÷ RDA, 1)，等权平均 × 100。注：IOM 指出按 RDA 判断个人单日摄入只是粗略参考。</dd>
+          <dt>其他检查项</dt><dd>其余营养素对照 RDA/AI；钠（CDRR 2300 mg / AHA 1500 mg）、添加糖、饱和脂肪、反式脂肪、酒精、咖啡因、超加工食品、每餐添加糖、AMDR、UL；能量平衡。这些只标“达标 / 偏离 / 不达标”并写明超出多少，不另设权重。</dd>
+          <dt>致癌物与风险物</dt><dd>按 IARC 分级给出警示与剂量，不另设扣分；加工肉、红肉、酒精、含糖饮料在 WCRF/AICR 评分中计分。</dd>
         </dl>
       </div>
       <div className="card stack">
-        <h2>周 / 月评分</h2>
-        <div className="banner accent">周期分 = 有记录日的日均综合分 × 70% + 生活方式分 × 30%</div>
-        <p className="sec">生活方式分只在按周看才有意义：中高强度运动 150–300 分钟/周（高强度按 2 倍计，权重 3）、力量训练 ≥2 天/周（1）、红肉 ≤350–500 g/周（2）、海产 ≥8 盎司/周（1）、饮酒低于大量饮酒阈值（1）、记录 ≥6 天/周（1）、体重变化速度符合目标（1）。HEI-2020 另按整个周期的总摄入计算（比单日更稳定）。</p>
-        <p className="sec">体重趋势使用指数移动平均（α = 0.1）过滤每日水分波动；“反推日消耗” = 日均摄入 − 趋势体重变化 × 7700 ÷ 天数，需要 ≥14 天且 70% 以上天数记录完整。</p>
-      </div>
-      <div className="card">
-        <h3 style={{ marginBottom: 8 }}>营养素充足度权重</h3>
-        <div className="row wrap">
-          {Object.entries(meta.adequacyWeights).map(([k, w]) => (
-            <span key={k} className="chip">{meta.nutrients.find((n) => n.key === k)?.zh ?? k} ×{w}</span>
-          ))}
+        <h2>综合：美国心脏协会 Life's Essential 8（LE8）</h2>
+        <p className="sec">Lloyd-Jones DM et al., Circulation 2022。8 项各 0–100 分，<b>总分 = 已有指标的等权平均</b>（缺失指标不计入分母，按官方补充材料）；80–100 高，50–79 中，0–49 低。今日页显示近 7 天，周报 / 月报显示整个周期。</p>
+        <div className="table-wrap">
+          <table className="table">
+            <tbody>{LE8_TABLE.map(([k, v]) => <tr key={k}><td style={{ width: 200, fontWeight: 600 }}>{k}</td><td className="small">{v}</td></tr>)}</tbody>
+          </table>
         </div>
+      </div>
+      <div className="card stack">
+        <h2>防癌：2018 WCRF/AICR 标准化评分</h2>
+        <p className="sec">Shams-White MM et al., Nutrients 2019。7 条建议各 1 分、等权，子项平分该条的 1 分（母乳喂养为可选项，不计）。</p>
+        <div className="table-wrap">
+          <table className="table">
+            <tbody>{WCRF_TABLE.map(([k, v]) => <tr key={k}><td style={{ width: 200, fontWeight: 600 }}>{k}</td><td className="small">{v}</td></tr>)}</tbody>
+          </table>
+        </div>
+      </div>
+      <div className="card stack">
+        <h2>能量与体重</h2>
+        <p className="sec">能量需求：NASEM 2023 EER 方程（19 岁以上）；基础代谢：Mifflin-St Jeor。有设备数据时，消耗 = (静息 + 活动能量 + 未被设备记录的运动) ÷ 0.9；运动净消耗 = (MET − 1) × 体重 × 小时（2024 Compendium）。体重趋势用指数移动平均（α = 0.1）；“反推日消耗” = 日均摄入 − 趋势体重变化 × 7700 ÷ 天数。能量平衡只标状态，体重结果体现在 LE8 的 BMI 与 WCRF 的健康体重中。</p>
       </div>
     </div>
   );

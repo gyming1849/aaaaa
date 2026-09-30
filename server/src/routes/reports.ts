@@ -5,20 +5,20 @@ import { all, get, run, parseJson } from "../db/index.ts";
 import { requireAuth } from "../auth.ts";
 import { ah, bad, notFound, forbidden } from "../lib/http.ts";
 import { isDate, todayIn, addDays, diffDays, rangeDays, weekStart } from "../lib/dates.ts";
-import { getProfile, getDailyScores, getPeriod, getWeights, weightOn, targetsFor } from "../services/userdata.ts";
+import { getProfile, getDailyScores, getPeriod, getWeights, weightOn, targetsFor, getIndices } from "../services/userdata.ts";
 import { weightTrend } from "../scoring/period.ts";
 import { mealsForDay } from "./log.ts";
 import { enqueue } from "../ai/jobs.ts";
 import { weeklySummary } from "../ai/service.ts";
 import { NUTRIENTS, FOOD_GROUPS } from "../standards/nutrients.ts";
-import { HAZARDS, HAZARDS_INFO_ONLY, HAZARD_TOTAL_CAP } from "../standards/hazards.ts";
+import { HAZARDS, HAZARDS_INFO_ONLY } from "../standards/hazards.ts";
 import { HEI_COMPONENTS } from "../standards/hei.ts";
 import { ACTIVITIES } from "../standards/met.ts";
 import { SOURCES } from "../standards/sources.ts";
 import { LIFE_STAGES, INTAKE, UPPER, SODIUM_CDRR, PROTEIN_G_PER_KG } from "../standards/dri.ts";
 import { ACTIVITY_LEVELS } from "../standards/energy.ts";
 import { CONDITIONS } from "../standards/targets.ts";
-import { CATEGORY_WEIGHTS, ADEQUACY_WEIGHTS, SCORING_VERSION } from "../scoring/daily.ts";
+import { MAR_NUTRIENTS, HEI_US_MEAN, SCORING_VERSION } from "../scoring/daily.ts";
 import type { DailyScore } from "../scoring/types.ts";
 
 export const reportsRouter = Router();
@@ -83,8 +83,11 @@ reportsRouter.get(
     const weights = getWeights(uid, date);
     const targets = targetsFor(p, date, weightOn(weights, date, p.weight_kg));
     const trend = weightTrend(weights.filter((w) => w.date >= addDays(date, -60)), [date])[0];
+    // 近 7 天（含当天）的 LE8 / WCRF / MEPA
+    const indices = getIndices(uid, addDays(date, -6), date, p);
     return {
       date,
+      indices,
       score: full ? score : stripDetail(score),
       targets,
       meals: full ? mealsForDay(uid, date) : [],
@@ -121,10 +124,10 @@ reportsRouter.get(
         date: d.date,
         hasData: d.hasData,
         score: d.score == null ? null : round(d.score),
-        grade: d.grade?.key ?? null,
         categories: Object.fromEntries(d.categories.map((c) => [c.key, round(c.score)])),
-        hazardPenalty: round(d.hazardPenalty),
+        hazardCount: d.hazards.filter((h) => h.key !== "red_meat" || h.dose >= 72).length,
         hei: d.hei ? round(d.hei.total) : null,
+        mar: d.mar ? round(d.mar.value) : null,
         intake: Math.round(d.energy.intake),
         tdee: Math.round(d.energy.tdee),
         target: Math.round(d.energy.target),
@@ -177,7 +180,7 @@ export async function generateAndStoreSummary(uid: number, start: string, end: s
     `INSERT INTO reports (user_id, period, start_date, end_date, score, detail, ai_summary) VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(user_id, period, start_date) DO UPDATE SET end_date = excluded.end_date, score = excluded.score, detail = excluded.detail,
        ai_summary = excluded.ai_summary, created_at = datetime('now')`,
-    uid, periodKind, start, end, period.score, JSON.stringify({ score: period.score, avgScore: period.avgScore, daysLogged: period.daysLogged }),
+    uid, periodKind, start, end, period.score, JSON.stringify({ score: period.score, avgHei: period.avgHei, avgMar: period.avgMar, daysLogged: period.daysLogged }),
     summary ? JSON.stringify(summary) : null,
   );
   return summary;
@@ -255,14 +258,13 @@ reportsRouter.get(
     foodGroups: FOOD_GROUPS,
     hazards: HAZARDS,
     hazardsInfoOnly: HAZARDS_INFO_ONLY,
-    hazardTotalCap: HAZARD_TOTAL_CAP,
     hei: HEI_COMPONENTS,
     activities: ACTIVITIES,
     activityLevels: ACTIVITY_LEVELS,
     sources: SOURCES,
     lifeStages: LIFE_STAGES,
-    categoryWeights: CATEGORY_WEIGHTS,
-    adequacyWeights: ADEQUACY_WEIGHTS,
+    marNutrients: MAR_NUTRIENTS,
+    heiUsMean: HEI_US_MEAN,
     conditions: CONDITIONS,
   })),
 );

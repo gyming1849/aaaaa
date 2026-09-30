@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { computeTargets, type Profile } from "../src/standards/targets.ts";
-import { scoreDay, limitCurve } from "../src/scoring/daily.ts";
+import { scoreDay, limitCurve, MAR_NUTRIENTS } from "../src/scoring/daily.ts";
+import { computeLE8, paPoints, bpPoints, sleepPoints, bmiPoints, lipidPoints, glucosePoints, nicotinePoints, mepaPoints } from "../src/scoring/le8.ts";
+import { computeWcrf } from "../src/scoring/wcrf.ts";
+import { computeMepa } from "../src/scoring/mepa.ts";
+import { computeIndices } from "../src/scoring/indices.ts";
 import { weightTrend, scorePeriod } from "../src/scoring/period.ts";
 import { computeHei } from "../src/standards/hei.ts";
 import { eer, bmrMifflin } from "../src/standards/energy.ts";
@@ -85,38 +89,102 @@ test("HEI-2020 perfect-ish diet scores high, junk diet scores low", () => {
   assert.ok(bad.total < 20, `bad ${bad.total}`);
 });
 
-test("processed meat and salt are penalised with explicit deductions", () => {
+test("daily score is the HEI-2020 total and salt deductions follow the HEI formula", () => {
   const t = computeTargets(profile, "2026-09-01");
-  const clean = scoreDay(day([[item("米饭", { energy_kcal: 700, carb_g: 150, protein_g: 15, sodium_mg: 800 }, { grains_refined_oz: 4 })]]), profile, t);
-  const bacon = scoreDay(day([[
-    item("米饭", { energy_kcal: 700, carb_g: 150, protein_g: 15, sodium_mg: 800 }, { grains_refined_oz: 4 }),
-    item("培根", { energy_kcal: 500, fat_g: 40, sat_fat_g: 14, sodium_mg: 2800 }, { processed_meat_g: 100, protein_total_oz: 3 }),
-  ]]), profile, t);
-  const pm = bacon.hazards.find((h) => h.key === "processed_meat")!;
-  assert.equal(Math.round(pm.penalty), 12); // 100 g → 2 × 6 分
-  const sodium = bacon.items.find((i) => i.key === "sodium_mg")!;
-  assert.equal(sodium.status, "bad");
-  assert.ok(sodium.message.includes("超出上限"));
-  assert.ok(bacon.score! < clean.score!);
-  assert.ok(bacon.top.issues.length > 0);
+  const clean = scoreDay(day([[item("米饭", { energy_kcal: 700, carb_g: 150, protein_g: 15, sodium_mg: 700 }, { grains_refined_oz: 4 })]]), profile, t);
+  const salty = scoreDay(day([[item("米饭", { energy_kcal: 700, carb_g: 150, protein_g: 15, sodium_mg: 3000 }, { grains_refined_oz: 4 })]]), profile, t);
+  assert.equal(clean.score, clean.hei!.total);
+  const na = salty.items.find((i) => i.key === "hei_sodium")!;
+  assert.equal(na.points, 0); // 3000 mg / 700 kcal = 4.3 g/1000 kcal ≥ 2.0 → 0/10
+  assert.ok(na.message.includes("扣 10"));
+  assert.ok(salty.score! < clean.score!);
+  const cdrr = salty.items.find((i) => i.key === "sodium_mg")!;
+  assert.equal(cdrr.status, "bad");
+  assert.equal(cdrr.maxPoints, 0); // 限量项只标状态，不另设权重
+  assert.ok(salty.top.issues.length > 0);
 });
 
-test("flag hazards use reference amounts and caps", () => {
+test("MAR uses the 11 FAO micronutrients with equal weights and NAR capped at 1", () => {
   const t = computeTargets(profile, "2026-09-01");
-  const d = day([[item("烤串", { energy_kcal: 600, protein_g: 40 }, { red_meat_g: 200 }, { hazards: [{ key: "high_temp_meat", amount: 500 }] })]]);
-  const s = scoreDay(d, profile, t);
-  const h = s.hazards.find((x) => x.key === "high_temp_meat")!;
-  assert.equal(h.penalty, 9); // 封顶
-  const rm = s.hazards.find((x) => x.key === "red_meat")!;
-  assert.ok(Math.abs(rm.penalty - 3.9) < 0.01); // (200−70)/100 × 3
+  const full = Object.fromEntries(MAR_NUTRIENTS.map((k) => [k, t.intake[k].value * 3]));
+  const s1 = scoreDay(day([[item("全面", { energy_kcal: 2000, ...full })]]), profile, t);
+  assert.equal(Math.round(s1.mar!.value), 100);
+  const half = Object.fromEntries(MAR_NUTRIENTS.map((k) => [k, t.intake[k].value * 0.5]));
+  const s2 = scoreDay(day([[item("一半", { energy_kcal: 2000, ...half })]]), profile, t);
+  assert.equal(Math.round(s2.mar!.value), 50);
+  assert.equal(s2.mar!.nutrients.length, 11);
+});
+
+test("IARC hazards are warnings only and never change the score", () => {
+  const t = computeTargets(profile, "2026-09-01");
+  const base = { energy_kcal: 800, protein_g: 40, sodium_mg: 600 };
+  const plain = scoreDay(day([[item("烤肉", base, { red_meat_g: 150, protein_total_oz: 5 })]]), profile, t);
+  const charred = scoreDay(day([[item("烤肉", base, { red_meat_g: 150, protein_total_oz: 5 }, { hazards: [{ key: "high_temp_meat", amount: 150 }] })]]), profile, t);
+  assert.equal(plain.score, charred.score);
+  assert.ok(charred.hazards.some((h) => h.key === "high_temp_meat" && h.iarc === "2A"));
+  assert.ok(charred.top.issues.some((x) => x.includes("IARC")));
 });
 
 test("aspartame is judged against body-weight ADI", () => {
   const t = computeTargets(profile, "2026-09-01");
   const ok = scoreDay(day([[item("零度可乐", { energy_kcal: 1 }, {}, { hazards: [{ key: "aspartame", amount: 200 }] })]]), profile, t);
-  assert.equal(ok.hazards[0].penalty, 0);
+  assert.ok(ok.hazards[0].message.includes("ADI 以内"));
   const over = scoreDay(day([[item("无糖饮料 x20", { energy_kcal: 1 }, {}, { hazards: [{ key: "aspartame", amount: 4000 }] })]]), profile, t);
-  assert.equal(over.hazards[0].penalty, 5);
+  assert.ok(over.hazards[0].message.includes("已超过 ADI"));
+});
+
+test("LE8 point tables match the AHA supplement worked examples", () => {
+  assert.equal(paPoints(90), 80);
+  assert.equal(paPoints(150), 100);
+  assert.equal(paPoints(0), 0);
+  assert.equal(bpPoints(135, 76, true), 30);
+  assert.equal(bpPoints(118, 78, false), 100);
+  assert.equal(sleepPoints(7.5), 100);
+  assert.equal(sleepPoints(6.5), 70);
+  assert.equal(bmiPoints(27), 70);
+  assert.equal(lipidPoints(150, true), 40);
+  assert.equal(glucosePoints(105, null, false), 60);
+  assert.equal(glucosePoints(null, 7.5, true), 30);
+  assert.equal(nicotinePoints("never", true), 80);
+  assert.equal(mepaPoints(13), 80);
+  const r = computeLE8({
+    mepa: { score: 13, days: 7, items: [] }, paMinutesPerWeek: 90, nicotine: "never", secondhandSmoke: false, sleepHours: null,
+    bmi: 27, nonHdl: null, lipidTreated: false, fastingGlucose: null, hba1c: null, diabetes: false, sbp: 135, dbp: 76, bpTreated: true,
+  });
+  // (80 + 80 + 100 + 70 + 30) / 5 —— 缺失项不计入分母
+  assert.equal(r.available, 5);
+  assert.equal(r.score, 72);
+  assert.equal(r.category?.key, "moderate");
+});
+
+test("WCRF/AICR standardized score follows Shams-White 2019 cut-points", () => {
+  const r = computeWcrf({
+    sex: "male", bmi: 23, waistCm: null, mvpaMinutesPerWeek: 100, fruitVegGPerDay: 450, fiberGPerDay: 20, upfPct: 40,
+    redMeatGPerWeek: 400, processedMeatGPerWeek: 50, ssbMlPerDay: 330, alcoholGPerDay: 0,
+  });
+  const pts = Object.fromEntries(r.components.map((c) => [c.key, c.points]));
+  assert.equal(pts.weight, 1); // 只有 BMI：0.5 × 2
+  assert.equal(pts.activity, 0.5);
+  assert.equal(pts.plants, 0.75);
+  assert.equal(pts.upf, null); // 无绝对切点，不计分
+  assert.equal(pts.meat, 0.5);
+  assert.equal(pts.ssb, 0);
+  assert.equal(pts.alcohol, 1);
+  assert.equal(r.max, 6);
+  assert.equal(r.score, 3.75);
+});
+
+test("MEPA derives weekly servings from logged food groups", () => {
+  const groups = { ...emptyVector(FOOD_GROUP_KEYS), veg_dark_green_cup: 7 * 0.6, veg_total_cup: 7 * 2, fruit_total_cup: 7, red_meat_g: 170, seafood_oz: 6, nuts_g: 150, legumes_cup: 2 };
+  const m = computeMepa({ groups, alcoholG: 0, fastFoodMeals: 0, days: 7, sex: "female" })!;
+  const met = Object.fromEntries(m.items.map((i) => [i.key, i.met]));
+  assert.equal(met.leafy, true); // 8.4 份/周 > 7
+  assert.equal(met.meat, true); // 2 份/周 < 3
+  assert.equal(met.fish, true);
+  assert.equal(met.nuts, true); // 5 份/周 > 4
+  assert.equal(met.beans, true); // 4 份/周 > 3
+  assert.equal(met.alcohol, false);
+  assert.equal(computeMepa({ groups, alcoholG: 0, fastFoodMeals: 0, days: 2, sex: "female" }), null);
 });
 
 test("energy uses device active energy when present", () => {
@@ -143,9 +211,12 @@ test("weight trend smooths noise and period computes empirical TDEE", () => {
   assert.ok(trend[27].trend! < 80 && trend[27].trend! > 78);
   const t = computeTargets(profile, "2026-08-28");
   const days = dates.map((date) => scoreDay({ ...day([[item("x", { energy_kcal: 1100 })], [item("y", { energy_kcal: 1100 })]], date) }, profile, t));
-  const p = scorePeriod({ start: dates[0], end: dates[27], days, exercises: new Map(), activity: new Map(), trend, profile, targets: t });
+  const indices = computeIndices({ days, exercises: [], activity: [], profile, weightKg: 78, waistCm: null, bp: null, lab: null });
+  const p = scorePeriod({ start: dates[0], end: dates[27], days, exercises: new Map(), activity: new Map(), trend, profile, targets: t, indices });
   assert.equal(p.daysLogged, 28);
   assert.ok(p.energy.actualChangeKg! < 0);
   assert.ok(p.energy.empiricalTdee! > 2200, `emp ${p.energy.empiricalTdee}`);
   assert.ok(p.checks.find((c) => c.key === "activity_week"));
+  assert.equal(p.score, p.indices.le8.score); // 周期总分 = LE8
+  assert.ok(p.indices.le8.components.find((c) => c.key === "bmi")!.points != null);
 });

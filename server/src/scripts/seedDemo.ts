@@ -48,10 +48,13 @@ for (const [ui, u] of USERS.entries()) {
         u.username, u.display, hashPassword("demo123"), u.color, u.share, u.detail).lastInsertRowid,
     );
     run(
-      `INSERT INTO profiles (user_id, sex, birth_date, height_cm, weight_kg, activity_level, goal, goal_rate_kg_week, target_weight_kg, physiology, sodium_mode, conditions, timezone)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0.5, ?, 'none', 'cdrr', '[]', 'Asia/Shanghai')`,
-      uid, u.sex, u.birth, u.h, u.w, u.level, u.goal, u.target,
+      `INSERT INTO profiles (user_id, sex, birth_date, height_cm, weight_kg, activity_level, goal, goal_rate_kg_week, target_weight_kg, physiology, sodium_mode, conditions, timezone, nicotine)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0.5, ?, 'none', 'cdrr', '[]', 'Asia/Shanghai', ?)`,
+      uid, u.sex, u.birth, u.h, u.w, u.level, u.goal, u.target, ui === 2 ? "former_1_5y" : "never",
     );
+    // 体检化验（用于 LE8 血脂、血糖）
+    run("INSERT INTO lab_results (user_id, date, total_chol, hdl, non_hdl, fasting_glucose, hba1c) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      uid, addDays(today, -120), 190 + ui * 15, 48 - ui * 3, 142 + ui * 18, 94 + ui * 6, 5.4 + ui * 0.2);
     let weight = u.w;
     for (let i = days - 1; i >= 0; i--) {
       const date = addDays(today, -i);
@@ -80,8 +83,9 @@ for (const [ui, u] of USERS.entries()) {
       // 活动
       const steps = Math.round(4000 + r() * 9000 + (u.level === "active" ? 3000 : 0));
       const active = Math.round(steps * 0.035 + r() * 120);
-      run("INSERT INTO activity_days (user_id, date, steps, active_kcal, resting_kcal, exercise_min, source) VALUES (?, ?, ?, ?, ?, ?, 'apple_shortcut')",
-        uid, date, steps, active, Math.round(10 * weight + 6.25 * u.h - 5 * 34 + (u.sex === "male" ? 5 : -161)), Math.round(r() * 40));
+      run("INSERT INTO activity_days (user_id, date, steps, active_kcal, resting_kcal, exercise_min, sleep_hours, source) VALUES (?, ?, ?, ?, ?, ?, ?, 'apple_shortcut')",
+        uid, date, steps, active, Math.round(10 * weight + 6.25 * u.h - 5 * 34 + (u.sex === "male" ? 5 : -161)), Math.round(r() * 40),
+        Math.round((6 + r() * 2.6) * 10) / 10);
       if (r() < 0.3) {
         const act = ACTIVITY_MAP[["swim_freestyle_medium", "jogging", "strength_moderate", "badminton", "cycle_moderate"][Math.floor(r() * 5)]];
         const dur = 30 + Math.floor(r() * 60);
@@ -92,7 +96,9 @@ for (const [ui, u] of USERS.entries()) {
       const tdee = 10 * weight + 6.25 * u.h - 5 * 34 + 5 + active + 150;
       weight += (kcal - tdee / 0.9) / 7700 + (r() - 0.5) * 0.02;
       if (r() < 0.85) {
-        run("INSERT INTO body_metrics (user_id, date, time, weight_kg, source) VALUES (?, ?, '22:30', ?, 'manual')", uid, date, Math.round((weight + (r() - 0.5) * 0.8) * 10) / 10);
+        const bp = i % 7 === 0 ? [118 + ui * 8 + Math.round(r() * 10), 74 + ui * 4 + Math.round(r() * 6)] : [null, null];
+        run("INSERT INTO body_metrics (user_id, date, time, weight_kg, sbp, dbp, waist_cm, source) VALUES (?, ?, '22:30', ?, ?, ?, ?, 'manual')",
+          uid, date, Math.round((weight + (r() - 0.5) * 0.8) * 10) / 10, bp[0], bp[1], i % 30 === 0 ? 84 + ui * 5 : null);
       }
     }
     invalidateAll(uid);

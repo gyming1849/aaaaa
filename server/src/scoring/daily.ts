@@ -1,51 +1,33 @@
-// 每日离线评分引擎（评分规则 v1）。
+// 每日离线评分引擎（评分规则 v2：全部采用已发表的评分体系，不自定权重）
 //
-// 综合分（0–100）=
-//   膳食质量 HEI-2020 × 35%
-// + 营养素充足度（对照 RDA/AI）× 25%
-// + 限量控制（钠、添加糖、饱和脂肪、反式脂肪、酒精、咖啡因、超加工、UL、AMDR）× 25%
-// + 能量平衡（摄入 vs 当日消耗 + 目标调整）× 15%
-// − 致癌/风险物扣分（封顶 30 分）
+// - 当日膳食质量 = HEI-2020 总分（USDA / NCI，13 个组分的官方分值，满分 100）
+// - 营养素充足 = MAR 平均充足比（FAO 等采用的 11 种微量营养素，NAR = min(摄入/RDA, 1)，等权平均）
+// - 其他营养素、限量（钠、添加糖、饱和脂肪、酒精、咖啡因、UL…）、能量平衡：只标“达标 / 不达标”，不另设权重
+// - 致癌物与风险物：按 IARC 分级给出警示，不另设扣分；加工肉、红肉、酒精、含糖饮料在 WCRF/AICR 防癌评分中计分
+// - 周期与近 7 天的综合健康分：AHA Life's Essential 8（见 le8.ts）、WCRF/AICR（见 wcrf.ts）
 //
 // 规则详细说明见 docs/scoring.md，前端“标准库”页面也会完整展示。
 
 import { NUTRIENT_KEYS, FOOD_GROUP_KEYS, NUTRIENT_MAP, emptyVector, addVectors, type NutrientVector } from "../standards/nutrients.ts";
 import { computeHei, HEI_COMPONENTS } from "../standards/hei.ts";
-import { HAZARDS, HAZARD_TOTAL_CAP } from "../standards/hazards.ts";
+import { HAZARDS, HAZARD_MAP } from "../standards/hazards.ts";
 import { eer, stepsNetKcal } from "../standards/energy.ts";
 import type { Profile, Targets } from "../standards/targets.ts";
 import type {
-  DayData, DailyScore, ScoreItem, HazardResult, EnergyResult, CategoryResult, Status,
+  DayData, DailyScore, ScoreItem, HazardResult, EnergyResult, CategoryResult, Status, MarResult,
 } from "./types.ts";
 
-export const SCORING_VERSION = 1;
+export const SCORING_VERSION = 2;
 
-export const CATEGORY_WEIGHTS = {
-  hei: { zh: "膳食质量 (HEI-2020)", weight: 35 },
-  adequacy: { zh: "营养素充足", weight: 25 },
-  moderation: { zh: "限量控制", weight: 25 },
-  energy: { zh: "能量平衡", weight: 15 },
-} as const;
+/** HEI-2020 美国人平均分（USDA，NHANES 2017–2018，2 岁及以上） */
+export const HEI_US_MEAN = 58;
 
-/** 充足度评估的营养素及权重（DGA 列出的“公共健康关注营养素”权重更高） */
-export const ADEQUACY_WEIGHTS: Record<string, number> = {
-  protein_g: 2, fiber_g: 2, potassium_mg: 2, calcium_mg: 2, vit_d_ug: 2,
-  iron_mg: 1, magnesium_mg: 1, zinc_mg: 1, vit_a_ug: 1, vit_c_mg: 1, vit_e_mg: 1, vit_k_ug: 1,
-  folate_ug: 1, vit_b12_ug: 1, water_g: 1,
-  thiamin_mg: 0.5, riboflavin_mg: 0.5, niacin_mg: 0.5, vit_b6_mg: 0.5, choline_mg: 0.5,
-  selenium_ug: 0.5, iodine_ug: 0.5, phosphorus_mg: 0.5, copper_mg: 0.5, manganese_mg: 0.5,
-  linoleic_g: 0.5, ala_g: 0.5, pantothenic_mg: 0.25, biotin_ug: 0.25,
-};
+/** MAR 计分的 11 种微量营养素（Arimond et al. 2010；FAO MDD-W 指南） */
+export const MAR_NUTRIENTS = [
+  "vit_a_ug", "thiamin_mg", "riboflavin_mg", "niacin_mg", "vit_b6_mg", "folate_ug", "vit_b12_ug", "vit_c_mg", "calcium_mg", "iron_mg", "zinc_mg",
+];
 
-export function gradeOf(score: number): { key: string; zh: string } {
-  if (score >= 85) return { key: "A", zh: "优秀" };
-  if (score >= 70) return { key: "B", zh: "良好" };
-  if (score >= 55) return { key: "C", zh: "一般" };
-  if (score >= 40) return { key: "D", zh: "较差" };
-  return { key: "E", zh: "很差" };
-}
-
-/** 限量型项目的得分曲线：≤理想 满分；理想→上限 线性降到 0.7；超过上限后到 2×上限 降到 0 */
+/** 限量型项目的状态：≤理想 达标；≤上限 达标（高于理想）；超过上限 不达标 */
 export function limitCurve(value: number, ideal: number, limit: number): { score: number; status: Status } {
   if (limit <= 0) return value <= 0 ? { score: 1, status: "good" } : { score: 0, status: "bad" };
   if (value <= ideal) return { score: 1, status: "good" };
@@ -74,6 +56,7 @@ export interface DayTotals {
   mealSugars: { meal_type: string; time: string; added_sugars_g: number }[];
   itemCount: number;
   mealCount: number;
+  fastFoodMeals: number;
 }
 
 export function sumDay(day: DayData): DayTotals {
@@ -83,7 +66,9 @@ export function sumDay(day: DayData): DayTotals {
   let itemCount = 0;
   const mealSugars: DayTotals["mealSugars"] = [];
   let mealCount = 0;
+  let fastFoodMeals = 0;
   for (const meal of day.meals) {
+    if (meal.items.some((it) => it.category === "fast_food")) fastFoodMeals++;
     let sugar = 0;
     let kcal = 0;
     for (const it of meal.items) {
@@ -100,7 +85,7 @@ export function sumDay(day: DayData): DayTotals {
       mealSugars.push({ meal_type: meal.meal_type, time: meal.time, added_sugars_g: sugar });
     }
   }
-  return { totals, groups, upfKcal, mealSugars, itemCount, mealCount };
+  return { totals, groups, upfKcal, mealSugars, itemCount, mealCount, fastFoodMeals };
 }
 
 export function computeEnergy(day: DayData, profile: Profile, t: Targets, intakeKcal: number): EnergyResult {
@@ -156,7 +141,8 @@ export function computeEnergy(day: DayData, profile: Profile, t: Targets, intake
   };
 }
 
-export function scoreHazards(day: DayData, sums: DayTotals, t: Targets): { list: HazardResult[]; penalty: number } {
+/** 风险物警示（IARC 分级 + 剂量说明），不扣分 */
+export function scoreHazards(day: DayData, sums: DayTotals, t: Targets): HazardResult[] {
   const list: HazardResult[] = [];
   const items = day.meals.flatMap((m) => m.items);
   for (const h of HAZARDS) {
@@ -180,45 +166,22 @@ export function scoreHazards(day: DayData, sums: DayTotals, t: Targets): { list:
       }
     }
     if (dose <= 0.01) continue;
-
-    let penalty = 0;
-    let message = "";
-    const unit = h.dose.unit;
+    let message: string;
     if (h.key === "aspartame") {
-      const pct = (dose / t.aspartameAdiMg) * 100;
-      penalty = dose > t.aspartameAdiMg ? h.cap : 0;
-      message = `约 ${fmtNum(dose)} mg，为你体重对应 ADI（${fmtNum(t.aspartameAdiMg)} mg）的 ${fmtNum(pct)}%` + (penalty ? "，已超过 ADI" : "，在安全范围内");
+      message = `约 ${fmtNum(dose)} mg，为你体重对应 ADI（${fmtNum(t.aspartameAdiMg)} mg）的 ${fmtNum((dose / t.aspartameAdiMg) * 100)}%` + (dose > t.aspartameAdiMg ? "，已超过 ADI" : "，在 ADI 以内");
+    } else if (h.key === "processed_meat") {
+      message = `加工肉约 ${fmtNum(dose)} g（WHO：每天每 50 g 结直肠癌风险约 +18%；WCRF：<21 g/周）`;
+    } else if (h.key === "red_meat") {
+      message = `红肉约 ${fmtNum(dose)} g（WCRF：每周 ≤500 g 熟重）`;
+    } else if (h.key === "alcohol") {
+      message = `纯酒精约 ${fmtNum(dose, 1)} g ≈ ${fmtNum(dose / 14, 1)} 标准杯（IARC：无安全剂量）`;
     } else {
-      const over = Math.max(0, dose - (h.freeAmount ?? 0));
-      const mult = t.sensitive && h.sensitiveMultiplier ? h.sensitiveMultiplier : 1;
-      penalty = Math.min(h.cap, (over / h.refAmount) * h.penaltyPerRef * mult);
-      if (h.key === "processed_meat") {
-        message = `加工肉约 ${fmtNum(dose)} g（每天每 50 g 结直肠癌风险约 +18%）`;
-      } else if (h.key === "red_meat") {
-        message = over > 0
-          ? `红肉约 ${fmtNum(dose)} g，超过日均建议（约 ${h.freeAmount} g）${fmtNum(over)} g`
-          : `红肉约 ${fmtNum(dose)} g，在日均建议（约 ${h.freeAmount} g）以内`;
-      } else if (h.key === "alcohol") {
-        message = `纯酒精约 ${fmtNum(dose, 1)} g ≈ ${fmtNum(dose / 14, 1)} 标准杯` + (mult > 1 ? "（敏感人群加倍扣分）" : "");
-      } else {
-        message = `相关食物约 ${fmtNum(dose)} ${unit}`;
-      }
+      message = `相关食物约 ${fmtNum(dose)} ${h.dose.unit}`;
     }
-    list.push({
-      key: h.key,
-      zh: h.zh,
-      iarc: h.iarc,
-      dose,
-      unit,
-      penalty,
-      foods: [...foods],
-      message,
-      sources: h.sources,
-    });
+    list.push({ key: h.key, zh: h.zh, iarc: h.iarc, dose, unit: h.dose.unit, foods: [...foods], message, sources: h.sources });
   }
-  list.sort((a, b) => b.penalty - a.penalty);
-  const penalty = Math.min(HAZARD_TOTAL_CAP, list.reduce((s, h) => s + h.penalty, 0));
-  return { list, penalty };
+  const rank = (g: string) => ({ "1": 0, "2A": 1, "—": 2, "2B": 3 })[g] ?? 4;
+  return list.sort((a, b) => rank(a.iarc) - rank(b.iarc));
 }
 
 export function scoreDay(day: DayData, profile: Profile, t: Targets): DailyScore {
@@ -239,7 +202,7 @@ export function scoreDay(day: DayData, profile: Profile, t: Targets): DailyScore
   const upfPct = kcal > 0 ? (sums.upfKcal / kcal) * 100 : 0;
   const mealCount = sums.mealCount;
 
-  const base: Omit<DailyScore, "score" | "grade" | "categories" | "items" | "hei" | "hazards" | "hazardPenalty" | "top"> = {
+  const base = {
     date: day.date,
     hasData,
     energy,
@@ -249,6 +212,7 @@ export function scoreDay(day: DayData, profile: Profile, t: Targets): DailyScore
     upfPct,
     mealCount,
     itemCount: sums.itemCount,
+    fastFoodMeals: sums.fastFoodMeals,
     completeness: completenessOf(kcal, mealCount, t),
     weightKg: day.weightKg,
     weighedToday: day.weighedToday,
@@ -256,32 +220,21 @@ export function scoreDay(day: DayData, profile: Profile, t: Targets): DailyScore
   };
 
   if (!hasData) {
-    return {
-      ...base,
-      score: null,
-      grade: null,
-      categories: [],
-      items: [],
-      hei: null,
-      hazards: [],
-      hazardPenalty: 0,
-      top: { issues: [], wins: [] },
-    };
+    return { ...base, score: null, categories: [], items: [], hei: null, mar: null, hazards: [], top: { issues: [], wins: [] } };
   }
 
   const items: ScoreItem[] = [];
 
-  // ---------- A. 膳食质量 HEI-2020 ----------
+  // ---------- HEI-2020：官方组分分值 ----------
   const hei = computeHei(totals, groups);
-  const heiW = CATEGORY_WEIGHTS.hei.weight;
   if (hei) {
     for (const c of hei.components) {
       const def = HEI_COMPONENTS.find((d) => d.key === c.key)!;
       const ratio = c.score / c.max;
-      const maxPoints = (heiW * c.max) / 100;
+      const lost = c.max - c.score;
       const targetText = def.kind === "adequacy"
-        ? (def.key === "fatty_acids" ? `≥ ${def.best}（≤ ${def.worst} 得 0 分）` : `≥ ${def.best} ${def.unit}`)
-        : `≤ ${def.best} ${def.unit}（≥ ${def.worst} 得 0 分）`;
+        ? (def.key === "fatty_acids" ? `≥ ${def.best} 得满分，≤ ${def.worst} 得 0` : `≥ ${def.best} ${def.unit} 得满分`)
+        : `≤ ${def.best} 得满分，≥ ${def.worst} 得 0（${def.unit}）`;
       items.push({
         key: `hei_${c.key}`,
         category: "hei",
@@ -291,63 +244,67 @@ export function scoreDay(day: DayData, profile: Profile, t: Targets): DailyScore
         targetText,
         status: ratio >= 0.999 ? "good" : ratio >= 0.6 ? "warn" : "bad",
         score: ratio,
-        points: maxPoints * ratio,
-        maxPoints,
-        message: `${c.zh} ${fmtNum(c.value, 2)} ${c.unit}，得 ${fmtNum(c.score, 1)}/${c.max}` + (ratio < 0.999 ? `。建议：${c.hint}` : ""),
+        points: c.score,
+        maxPoints: c.max,
+        message: `${c.zh} ${fmtNum(c.value, 2)} ${c.unit}：得 ${fmtNum(c.score, 1)}/${c.max}` + (lost > 0.05 ? `，扣 ${fmtNum(lost, 1)} 分。建议：${c.hint}` : "，满分"),
         sources: ["hei_2020"],
       });
     }
   }
-  const heiScore = hei ? hei.total : 0;
 
-  // ---------- B. 营养素充足 ----------
-  const adqW = CATEGORY_WEIGHTS.adequacy.weight;
-  const adqKeys = Object.keys(ADEQUACY_WEIGHTS).filter((k) => t.intake[k]);
-  const weightFor = (k: string) => {
-    let w = ADEQUACY_WEIGHTS[k];
-    if (k === "iron_mg" && (t.lifeStage.startsWith("f19") || t.lifeStage.startsWith("f31") || t.lifeStage.startsWith("p"))) w = 2;
-    if (k === "folate_ug" && t.physiology === "pregnant") w = 2;
-    return w;
-  };
-  const adqWeightSum = adqKeys.reduce((s, k) => s + weightFor(k), 0);
-  let adqScoreSum = 0;
-  for (const k of adqKeys) {
+  // ---------- MAR：11 种微量营养素，等权 ----------
+  const marList: MarResult["nutrients"] = [];
+  for (const k of MAR_NUTRIENTS) {
+    const tgt = t.intake[k];
+    if (!tgt) continue;
+    const v = totals[k] ?? 0;
+    const nar = Math.min(1, v / tgt.value);
+    marList.push({ key: k, zh: NUTRIENT_MAP[k].zh, intake: v, target: tgt.value, nar });
+  }
+  const mar: MarResult | null = marList.length ? { value: (marList.reduce((s, n) => s + n.nar, 0) / marList.length) * 100, nutrients: marList } : null;
+
+  // ---------- 各营养素是否达到 RDA/AI（MAR 的 11 种计分，其余只标状态） ----------
+  const skip = new Set(["sodium_mg", "carb_g", "water_g"]);
+  for (const k of Object.keys(t.intake)) {
+    if (skip.has(k)) continue;
+    const def = NUTRIENT_MAP[k];
+    if (!def) continue;
     const target = t.intake[k].value;
     const v = totals[k] ?? 0;
     const ratio = target > 0 ? v / target : 1;
-    const s = Math.min(1, ratio);
-    const w = weightFor(k);
-    adqScoreSum += s * w;
-    const def = NUTRIENT_MAP[k];
-    const maxPoints = (adqW * w) / adqWeightSum;
+    const inMar = MAR_NUTRIENTS.includes(k);
     let message = `${def.zh} ${fmtNum(v, def.decimals)} ${def.unit}，达到${t.intake[k].kind} 的 ${fmtNum(ratio * 100)}%`;
-    if (k === "protein_g") {
-      const perKg = v / t.referenceWeightKg;
-      message += `（${fmtNum(perKg, 2)} g/kg；DGA 2025–2030 建议 1.2–1.6 g/kg）`;
-    }
+    if (k === "protein_g") message += `（${fmtNum(v / t.referenceWeightKg, 2)} g/kg；DGA 2025–2030 建议 1.2–1.6 g/kg）`;
+    if (inMar) message += `（NAR ${fmtNum(Math.min(1, ratio), 2)}）`;
     items.push({
       key: k,
-      category: "adequacy",
+      category: inMar ? "mar" : "adequacy",
       zh: def.zh,
       value: v,
       unit: def.unit,
       targetText: `≥ ${fmtNum(target, def.decimals)} ${def.unit}（${t.intake[k].kind}）`,
       target,
-      status: k === "protein_g" && ratio >= 1 && v / t.referenceWeightKg < 1.2 ? "ok" : adequacyStatus(ratio),
-      score: s,
-      points: maxPoints * s,
-      maxPoints,
+      status: k === "protein_g" && ratio >= 1 && v / t.referenceWeightKg < 1.2 ? "ok" : ratio >= 1 ? "good" : ratio >= 0.7 ? "warn" : "bad",
+      score: Math.min(1, ratio),
+      points: 0,
+      maxPoints: 0,
       message,
       sources: [t.intake[k].source, ...(k === "protein_g" ? ["dga_2025"] : [])],
     });
   }
-  const adequacyScore = adqWeightSum ? (adqScoreSum / adqWeightSum) * 100 : 0;
+  // 水分单独提示（饮水常被漏记）
+  if (t.intake.water_g) {
+    const v = totals.water_g ?? 0;
+    const r = v / t.intake.water_g.value;
+    items.push({
+      key: "water_g", category: "adequacy", zh: "总水分", value: v, unit: "g", targetText: `≥ ${fmtNum(t.intake.water_g.value)} g（AI，含食物水分）`,
+      target: t.intake.water_g.value, status: r >= 1 ? "good" : r >= 0.7 ? "warn" : "bad", score: Math.min(1, r), points: 0, maxPoints: 0,
+      message: `总水分 ${fmtNum(v)} g，达到 AI 的 ${fmtNum(r * 100)}%（记得用“+250 ml”记录饮水）`, sources: ["nasem_dri"],
+    });
+  }
 
-  // ---------- C. 限量控制 ----------
-  const modW = CATEGORY_WEIGHTS.moderation.weight;
-  interface ModItem { item: Omit<ScoreItem, "points" | "maxPoints">; w: number }
-  const mods: ModItem[] = [];
-  const addLimit = (key: string, zh: string, value: number, unit: string, ideal: number, limit: number, w: number, sources: string[], extra = "", decimals = 0) => {
+  // ---------- 限量与其他标准：只标状态 ----------
+  const addLimit = (key: string, zh: string, value: number, unit: string, ideal: number, limit: number, sources: string[], extra = "", decimals = 0) => {
     const { score, status } = limitCurve(value, ideal, limit);
     const over = value - limit;
     let message = `${zh} ${fmtNum(value, decimals)} ${unit}`;
@@ -355,49 +312,37 @@ export function scoreDay(day: DayData, profile: Profile, t: Targets): DailyScore
       message += unit === "%"
         ? `，超出上限 ${fmtNum(over, decimals)} 个百分点`
         : `，超出上限 ${fmtNum(over, decimals)} ${unit}` + (limit > 0 ? `（${fmtNum((over / limit) * 100)}%）` : "");
-    }
-    else if (status === "ok") message += `，在上限内但高于理想值 ${fmtNum(ideal, decimals)} ${unit}`;
+    } else if (status === "ok") message += `，在上限内但高于理想值 ${fmtNum(ideal, decimals)} ${unit}`;
     else message += "，达到理想水平";
-    mods.push({
-      w,
-      item: {
-        key, category: "moderation", zh, value, unit,
-        targetText: ideal === limit ? `≤ ${fmtNum(limit, decimals)} ${unit}` : `≤ ${fmtNum(limit, decimals)} ${unit}（理想 ≤ ${fmtNum(ideal, decimals)}）`,
-        ideal, limit, status, score, message: message + extra, sources,
-      },
+    items.push({
+      key, category: "moderation", zh, value, unit,
+      targetText: ideal === limit ? `≤ ${fmtNum(limit, decimals)} ${unit}` : `≤ ${fmtNum(limit, decimals)} ${unit}（理想 ≤ ${fmtNum(ideal, decimals)}）`,
+      ideal, limit, status, score, points: 0, maxPoints: 0, message: message + extra, sources,
     });
   };
-
   const L = t.limits;
-  addLimit("sodium_mg", "钠", totals.sodium_mg, "mg", L.sodium_mg.ideal, L.sodium_mg.limit, 3,
+  addLimit("sodium_mg", "钠", totals.sodium_mg, "mg", L.sodium_mg.ideal, L.sodium_mg.limit,
     [L.sodium_mg.limitSource, L.sodium_mg.idealSource, "dga_2025"], `（约合食盐 ${fmtNum(totals.sodium_mg / 393, 1)} g）`);
-  addLimit("added_sugars_g", "添加糖", totals.added_sugars_g, "g", L.added_sugars_g.ideal, L.added_sugars_g.limit, 3,
+  addLimit("added_sugars_g", "添加糖", totals.added_sugars_g, "g", L.added_sugars_g.ideal, L.added_sugars_g.limit,
     [L.added_sugars_g.limitSource, L.added_sugars_g.idealSource, "dga_2025"], "", 1);
-  addLimit("sat_fat_pct", "饱和脂肪供能比", macroPct.satFat, "%", L.sat_fat_pct.ideal, L.sat_fat_pct.limit, 3,
+  addLimit("sat_fat_pct", "饱和脂肪供能比", macroPct.satFat, "%", L.sat_fat_pct.ideal, L.sat_fat_pct.limit,
     [L.sat_fat_pct.limitSource, L.sat_fat_pct.idealSource], `（${fmtNum(totals.sat_fat_g, 1)} g）`, 1);
-  addLimit("trans_fat_g", "反式脂肪", totals.trans_fat_g, "g", 0.3, Math.max(0.5, L.trans_fat_g.limit), 1, ["who_trans", "dga_2020"], "", 2);
-  addLimit("alcohol_g", "酒精", totals.alcohol_g, "g", 0, L.alcohol_g.limit, 2, ["dga_2020", "dga_2025", "niaaa_drink"],
+  addLimit("trans_fat_g", "反式脂肪", totals.trans_fat_g, "g", 0.3, Math.max(0.5, L.trans_fat_g.limit), ["who_trans", "dga_2020"], "", 2);
+  addLimit("alcohol_g", "酒精", totals.alcohol_g, "g", 0, L.alcohol_g.limit, ["dga_2020", "dga_2025", "niaaa_drink"],
     totals.alcohol_g > 0 ? `（≈ ${fmtNum(totals.alcohol_g / 14, 1)} 标准杯）` : "", 1);
-  addLimit("caffeine_mg", "咖啡因", totals.caffeine_mg, "mg", L.caffeine_mg.ideal, L.caffeine_mg.limit, 1, [L.caffeine_mg.limitSource]);
-  addLimit("upf_pct", "超加工食品供能比", upfPct, "%", L.upf_pct.ideal, L.upf_pct.limit, 1, ["dga_2025", "nova", "system"]);
-
-  // 每餐添加糖 ≤ 10 g（DGA 2025–2030）
+  addLimit("caffeine_mg", "咖啡因", totals.caffeine_mg, "mg", L.caffeine_mg.ideal, L.caffeine_mg.limit, [L.caffeine_mg.limitSource]);
+  addLimit("upf_pct", "超加工食品供能比", upfPct, "%", L.upf_pct.ideal, L.upf_pct.limit, ["dga_2025", "nova"]);
   if (sums.mealSugars.length) {
     const okMeals = sums.mealSugars.filter((m) => m.added_sugars_g <= t.addedSugarPerMealG + 0.05).length;
     const ratio = okMeals / sums.mealSugars.length;
     const worst = sums.mealSugars.reduce((a, b) => (b.added_sugars_g > a.added_sugars_g ? b : a));
-    mods.push({
-      w: 1,
-      item: {
-        key: "added_sugars_per_meal", category: "moderation", zh: "每餐添加糖 ≤ 10 g", value: okMeals, unit: `/${sums.mealSugars.length} 餐`,
-        targetText: "每餐 ≤ 10 g（DGA 2025–2030）", status: ratio >= 1 ? "good" : ratio >= 0.5 ? "warn" : "bad", score: ratio,
-        message: ratio >= 1 ? "每餐添加糖都在 10 g 以内" : `${sums.mealSugars.length - okMeals} 餐超过 10 g，最高一餐 ${fmtNum(worst.added_sugars_g, 1)} g（${worst.time}）`,
-        sources: ["dga_2025"],
-      },
+    items.push({
+      key: "added_sugars_per_meal", category: "moderation", zh: "每餐添加糖 ≤ 10 g", value: okMeals, unit: `/${sums.mealSugars.length} 餐`,
+      targetText: "每餐 ≤ 10 g（DGA 2025–2030）", status: ratio >= 1 ? "good" : "bad", score: ratio, points: 0, maxPoints: 0,
+      message: ratio >= 1 ? "每餐添加糖都在 10 g 以内" : `${sums.mealSugars.length - okMeals} 餐超过 10 g，最高一餐 ${fmtNum(worst.added_sugars_g, 1)} g（${worst.time}）`,
+      sources: ["dga_2025"],
     });
   }
-
-  // 宏量营养素供能比（AMDR）
   if (kcal >= 600) {
     const amdrItems: [string, string, number, [number, number]][] = [
       ["amdr_protein", "蛋白质供能比", macroPct.protein, t.amdr.protein],
@@ -405,100 +350,81 @@ export function scoreDay(day: DayData, profile: Profile, t: Targets): DailyScore
       ["amdr_fat", "脂肪供能比", macroPct.fat, t.amdr.fat],
     ];
     for (const [key, zh, v, [lo, hi]] of amdrItems) {
-      const dist = v < lo ? lo - v : v > hi ? v - hi : 0;
-      const s = Math.max(0, 1 - dist / 15);
-      mods.push({
-        w: 0.5,
-        item: {
-          key, category: "moderation", zh, value: v, unit: "%", targetText: `${lo}–${hi}%（AMDR）`,
-          status: dist === 0 ? "good" : dist <= 5 ? "warn" : "bad", score: s,
-          message: `${zh} ${fmtNum(v)}%` + (dist === 0 ? "，在可接受范围内" : v < lo ? `，低于下限 ${lo}%` : `，高于上限 ${hi}%`),
-          sources: ["nasem_dri"],
-        },
+      const inRange = v >= lo && v <= hi;
+      items.push({
+        key, category: "moderation", zh, value: v, unit: "%", targetText: `${lo}–${hi}%（AMDR）`,
+        status: inRange ? "good" : "bad", score: inRange ? 1 : 0, points: 0, maxPoints: 0,
+        message: `${zh} ${fmtNum(v)}%` + (inRange ? "，在可接受范围内" : v < lo ? `，低于下限 ${lo}%` : `，高于上限 ${hi}%`),
+        sources: ["nasem_dri"],
       });
     }
   }
-
-  // 可耐受最高摄入量 UL（仅对适用于总摄入的营养素）
   for (const [k, u] of Object.entries(t.upper)) {
     if (!u.appliesToTotal) continue;
     const v = totals[k] ?? 0;
     if (v <= u.value) continue;
     const def = NUTRIENT_MAP[k];
-    mods.push({
-      w: 1,
-      item: {
-        key: `ul_${k}`, category: "moderation", zh: `${def.zh} 超过 UL`, value: v, unit: def.unit,
-        targetText: `≤ ${fmtNum(u.value, def.decimals)} ${def.unit}（UL）`, limit: u.value, status: "bad", score: 0,
-        message: `${def.zh} ${fmtNum(v, def.decimals)} ${def.unit}，超过可耐受最高摄入量 ${fmtNum(u.value, def.decimals)} ${def.unit}，检查补充剂或强化食品`,
-        sources: ["nasem_dri"],
-      },
+    items.push({
+      key: `ul_${k}`, category: "moderation", zh: `${def.zh} 超过 UL`, value: v, unit: def.unit,
+      targetText: `≤ ${fmtNum(u.value, def.decimals)} ${def.unit}（UL）`, limit: u.value, status: "bad", score: 0, points: 0, maxPoints: 0,
+      message: `${def.zh} ${fmtNum(v, def.decimals)} ${def.unit}，超过可耐受最高摄入量 ${fmtNum(u.value, def.decimals)} ${def.unit}，检查补充剂或强化食品`,
+      sources: ["nasem_dri"],
     });
   }
-
-  const modWeightSum = mods.reduce((s, m) => s + m.w, 0);
-  const moderationScore = modWeightSum ? (mods.reduce((s, m) => s + m.item.score * m.w, 0) / modWeightSum) * 100 : 100;
-  for (const m of mods) {
-    const maxPoints = (modW * m.w) / modWeightSum;
-    items.push({ ...m.item, maxPoints, points: maxPoints * m.item.score });
-  }
-
-  // 胆固醇：仅提示
   items.push({
     key: "cholesterol_mg", category: "moderation", zh: "膳食胆固醇（仅提示）", value: totals.cholesterol_mg, unit: "mg",
-    targetText: "尽量低（旧标准 300 mg）", status: "info", score: 1, points: 0, maxPoints: 0,
+    targetText: "尽量低（现行 DGA 无数值上限）", status: "info", score: 1, points: 0, maxPoints: 0,
     message: `胆固醇 ${fmtNum(totals.cholesterol_mg)} mg。现行 DGA 不设数值上限，只建议在健康膳食模式内尽量低`,
     sources: ["nasem_dri", "fda_dv"],
   });
 
-  // ---------- D. 能量平衡 ----------
-  const enW = CATEGORY_WEIGHTS.energy.weight;
+  // ---------- 能量平衡：只标状态 ----------
   const ratio = energy.target > 0 ? kcal / energy.target : 1;
   const dev = Math.abs(ratio - 1);
-  const energyScore = dev <= 0.1 ? 100 : Math.max(0, 100 * (1 - (dev - 0.1) / 0.4));
   items.push({
     key: "energy_balance", category: "energy", zh: "能量摄入 vs 目标", value: kcal, unit: "kcal",
     targetText: `${fmtNum(energy.target)} kcal ±10%`, target: energy.target,
     status: dev <= 0.1 ? "good" : dev <= 0.25 ? "warn" : "bad",
-    score: energyScore / 100, points: (enW * energyScore) / 100, maxPoints: enW,
+    score: Math.max(0, 1 - dev), points: 0, maxPoints: 0,
     message: `摄入 ${fmtNum(kcal)} kcal，今日目标 ${fmtNum(energy.target)} kcal（消耗 ${fmtNum(energy.tdee)}${t.goalDeltaKcal ? ` ${t.goalDeltaKcal > 0 ? "+" : "−"} ${fmtNum(Math.abs(t.goalDeltaKcal))} 目标调整` : ""}），` +
       (ratio > 1 ? `多 ${fmtNum(kcal - energy.target)} kcal` : `少 ${fmtNum(energy.target - kcal)} kcal`),
     sources: energy.method === "eer" ? ["nasem_energy", "mifflin"] : ["mifflin", "compendium_2024"],
   });
 
-  // ---------- 风险物 ----------
-  const hz = scoreHazards(day, sums, t);
+  const hazards = scoreHazards(day, sums, t);
 
-  const categories: CategoryResult[] = [
-    { key: "hei", zh: CATEGORY_WEIGHTS.hei.zh, weight: heiW, score: heiScore, points: (heiW * heiScore) / 100, maxPoints: heiW },
-    { key: "adequacy", zh: CATEGORY_WEIGHTS.adequacy.zh, weight: adqW, score: adequacyScore, points: (adqW * adequacyScore) / 100, maxPoints: adqW },
-    { key: "moderation", zh: CATEGORY_WEIGHTS.moderation.zh, weight: modW, score: moderationScore, points: (modW * moderationScore) / 100, maxPoints: modW },
-    { key: "energy", zh: CATEGORY_WEIGHTS.energy.zh, weight: enW, score: energyScore, points: (enW * energyScore) / 100, maxPoints: enW },
-  ];
-  const raw = categories.reduce((s, c) => s + c.points, 0) - hz.penalty;
-  const score = Math.max(0, Math.min(100, raw));
+  const categories: CategoryResult[] = [];
+  if (hei) categories.push({ key: "hei", zh: "膳食质量 HEI-2020", score: hei.total, source: "hei_2020", note: `美国人平均 ${HEI_US_MEAN} 分` });
+  if (mar) categories.push({ key: "mar", zh: "微量营养素充足 MAR", score: mar.value, source: "mar", note: "11 种微量营养素的平均充足比" });
 
-  // 摘要：扣分最多的问题与做得好的地方
-  const scored = items.filter((i) => i.maxPoints > 0);
-  const issues = [
-    ...hz.list.filter((h) => h.penalty > 0).map((h) => ({ lost: h.penalty, text: `${h.zh}：${h.message}，扣 ${fmtNum(h.penalty, 1)} 分` })),
-    ...scored.filter((i) => i.maxPoints - i.points > 0.3).map((i) => ({ lost: i.maxPoints - i.points, text: `${i.message}，少得 ${fmtNum(i.maxPoints - i.points, 1)} 分` })),
-  ].sort((a, b) => b.lost - a.lost).slice(0, 5).map((x) => x.text);
-  const wins = scored
-    .filter((i) => i.status === "good" && i.maxPoints >= 1)
-    .sort((a, b) => b.maxPoints - a.maxPoints)
+  // 摘要：HEI 扣分最多的组分、超标项、风险物、明显不足的营养素
+  const cand: { w: number; text: string }[] = [];
+  for (const i of items) {
+    if (i.category === "hei" && i.maxPoints - i.points >= 1.5) cand.push({ w: i.maxPoints - i.points, text: `HEI「${i.zh}」扣 ${fmtNum(i.maxPoints - i.points, 1)} 分：${fmtNum(i.value, 2)} ${i.unit}` });
+    if (i.category === "moderation" && i.status === "bad") cand.push({ w: 8, text: i.message });
+    if ((i.category === "mar" || i.key === "fiber_g" || i.key === "potassium_mg" || i.key === "vit_d_ug") && i.score < 0.5) cand.push({ w: 3, text: i.message });
+  }
+  for (const h of hazards) {
+    const def = HAZARD_MAP[h.key];
+    if (h.key === "red_meat" && h.dose < 72) continue; // 日均低于 WCRF 周上限（500 g ÷ 7）不提示
+    if (h.key === "aspartame" && h.dose <= t.aspartameAdiMg) continue;
+    // 风险物警示总是排在最前面（1 类 > 2A > 其他）
+    cand.push({ w: h.iarc === "1" ? 30 : h.iarc === "2A" ? 20 : 15, text: `${h.zh}（IARC ${def.iarc}）：${h.message}` });
+  }
+  const issues = cand.sort((a, b) => b.w - a.w).slice(0, 7).map((c) => c.text);
+  const wins = items
+    .filter((i) => (i.category === "hei" && i.maxPoints >= 5 && i.points >= i.maxPoints - 0.01) || (i.category === "moderation" && i.status === "good" && ["sodium_mg", "added_sugars_g", "sat_fat_pct"].includes(i.key)))
     .slice(0, 4)
     .map((i) => i.message);
 
   return {
     ...base,
-    score,
-    grade: gradeOf(score),
+    score: hei ? hei.total : null,
     categories,
     items,
     hei: hei ? { total: hei.total, components: hei.components.map((c) => ({ key: c.key, zh: c.zh, score: c.score, max: c.max, value: c.value, unit: c.unit, hint: c.hint })) } : null,
-    hazards: hz.list,
-    hazardPenalty: hz.penalty,
+    mar,
+    hazards,
     top: { issues, wins },
   };
 }

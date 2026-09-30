@@ -8,10 +8,10 @@ import { config } from "../config.ts";
 import { NUTRIENT_KEYS, FOOD_GROUP_KEYS, sanitizeVector, scaleVector, type NutrientVector } from "../standards/nutrients.ts";
 import { HAZARD_MAP } from "../standards/hazards.ts";
 import { ACTIVITY_MAP, netKcal } from "../standards/met.ts";
-import { MEAL_SYSTEM, FOOD_SYSTEM, EXERCISE_SYSTEM, WEEKLY_SYSTEM } from "./prompts.ts";
-import { mealAnalysisSchema, foodProfileSchema, exerciseSchema, weeklySummarySchema, FOOD_CATEGORIES } from "./schema.ts";
+import { MEAL_SYSTEM, FOOD_SYSTEM, EXERCISE_SYSTEM, WEEKLY_SYSTEM, ACTIVITY_SYSTEM } from "./prompts.ts";
+import { mealAnalysisSchema, foodProfileSchema, exerciseSchema, weeklySummarySchema, activitySchema, FOOD_CATEGORIES } from "./schema.ts";
 import { runAi, activeProvider, type AiImage } from "./providers.ts";
-import { mockAnalyzeMeal, mockParseExercise } from "./mock.ts";
+import { mockAnalyzeMeal, mockParseExercise, mockParseActivity } from "./mock.ts";
 import type { HazardEntry } from "../scoring/types.ts";
 import type { PeriodScore } from "../scoring/period.ts";
 import type { Profile } from "../standards/targets.ts";
@@ -364,6 +364,94 @@ export async function parseExercise(text: string, weightKg: number): Promise<{ i
   return { items, provider };
 }
 
+// ---------- 身体与活动识别（文字 + 截图） ----------
+
+export interface WorkoutDraft extends ExerciseDraft {
+  avg_hr: number | null;
+  device_kcal: number | null;
+  in_device: boolean;
+}
+
+export interface ActivityDraft {
+  date: string;
+  date_from_image: boolean;
+  activity: { steps: number | null; distance_km: number | null; active_kcal: number | null; resting_kcal: number | null; exercise_min: number | null; stand_hours: number | null; sleep_hours: number | null };
+  body: { weight_kg: number | null; body_fat_pct: number | null; sbp: number | null; dbp: number | null };
+  workouts: WorkoutDraft[];
+  notes: string;
+  provider: string;
+  model: string;
+}
+
+const numOrNull = (v: unknown, min: number, max: number): number | null => {
+  const x = Number(v);
+  return v === null || v === undefined || v === "" || !Number.isFinite(x) || x < min || x > max ? null : x;
+};
+
+export async function recognizeActivity(
+  userId: number,
+  input: { date: string; today: string; text: string; photos: unknown },
+  weightKg: number,
+): Promise<ActivityDraft> {
+  const images = resolvePhotos(userId, input.photos);
+  let raw: Record<string, unknown>;
+  let provider = "mock";
+  let model = "offline";
+  if (activeProvider() === "mock") {
+    raw = mockParseActivity(input.text) as unknown as Record<string, unknown>;
+  } else {
+    const prompt = `记录日期：${input.date}（今天是 ${input.today}）
+用户体重约 ${weightKg} kg。
+${input.text ? `用户描述：\n${input.text}` : "（没有文字，请从截图中读取）"}
+${images.length ? `\n附带 ${images.length} 张截图（健康 App / 手表 / 体脂秤 / 血压计等）。` : ""}`;
+    const res = await runAi({ kind: "activity", system: ACTIVITY_SYSTEM, prompt, images, schema: activitySchema, webSearch: false });
+    raw = res.data as Record<string, unknown>;
+    provider = res.provider;
+    model = res.model;
+  }
+  const aiDate = typeof raw.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.date) && raw.date <= input.today ? raw.date : null;
+  const workouts = (Array.isArray(raw.workouts) ? (raw.workouts as Record<string, unknown>[]) : []).map((w) => {
+    const act = ACTIVITY_MAP[String(w.activity_key)] ?? ACTIVITY_MAP.other_moderate;
+    const met = Math.min(20, Math.max(1, Number(w.met) || act.met));
+    const duration = Math.min(1440, Math.max(1, Number(w.duration_min) || 30));
+    return {
+      description: String(w.description ?? act.zh).slice(0, 80),
+      activity_key: act.key,
+      met,
+      duration_min: Math.round(duration),
+      distance_km: Math.max(0, Number(w.distance_km) || 0),
+      kcal: Math.round(netKcal(met, weightKg, duration)),
+      notes: String(w.notes ?? "").slice(0, 200),
+      avg_hr: numOrNull(w.avg_hr, 30, 230),
+      device_kcal: numOrNull(w.device_kcal, 1, 10000),
+      in_device: Boolean(w.from_device),
+    };
+  });
+  return {
+    date: aiDate ?? input.date,
+    date_from_image: !!aiDate && aiDate !== input.date,
+    activity: {
+      steps: numOrNull(raw.steps, 0, 200000),
+      distance_km: numOrNull(raw.distance_km, 0, 500),
+      active_kcal: numOrNull(raw.active_kcal, 0, 10000),
+      resting_kcal: numOrNull(raw.resting_kcal, 300, 5000),
+      exercise_min: numOrNull(raw.exercise_min, 0, 1440),
+      stand_hours: numOrNull(raw.stand_hours, 0, 24),
+      sleep_hours: numOrNull(raw.sleep_hours, 0, 24),
+    },
+    body: {
+      weight_kg: numOrNull(raw.weight_kg, 20, 350),
+      body_fat_pct: numOrNull(raw.body_fat_pct, 2, 70),
+      sbp: numOrNull(raw.sbp, 60, 260),
+      dbp: numOrNull(raw.dbp, 30, 160),
+    },
+    workouts,
+    notes: String(raw.notes ?? "").slice(0, 600),
+    provider,
+    model,
+  };
+}
+
 // ---------- 每周 AI 点评 ----------
 
 export interface WeeklySummary {
@@ -380,14 +468,23 @@ export async function weeklySummary(p: PeriodScore, topFoods: { name: string; co
   const payload = {
     period: `${p.start} ~ ${p.end}`,
     days_logged: `${p.daysLogged}/${p.days}`,
-    score: round(p.score),
-    avg_daily_score: round(p.avgScore),
-    lifestyle_score: round(p.lifestyleScore),
+    aha_life_essential_8: {
+      score: round(p.score),
+      category: p.category?.zh ?? null,
+      components: p.indices.le8.components.map((c) => ({ metric: c.zh, points: c.points, value: c.value })),
+    },
+    wcrf_aicr_cancer_prevention: {
+      score: `${round(p.indices.wcrf.score, 2)}/${p.indices.wcrf.max}`,
+      components: p.indices.wcrf.components.map((c) => ({ recommendation: c.zh, points: c.points, detail: c.detail })),
+    },
+    mepa_diet_screener: p.indices.mepa ? { score: `${p.indices.mepa.score}/16`, unmet: p.indices.mepa.items.filter((i) => !i.met).map((i) => `${i.zh}：${round(i.value, 1)} ${i.unit}，标准 ${i.criterion}`) } : null,
+    avg_daily_hei_2020: round(p.avgHei),
+    avg_daily_mar: round(p.avgMar),
     hei_2020_on_period_totals: p.hei ? round(p.hei.total) : null,
     hei_components: p.hei?.components.map((c) => ({ component: c.zh, score: `${round(c.score, 1)}/${c.max}` })),
     daily_item_stats: p.itemStats.map((s) => ({ item: s.zh, good: s.good + s.ok, warn: s.warn, bad: s.bad })),
     weekly_checks: p.checks.map((c) => ({ item: c.zh, status: c.status, message: c.message, target: c.targetText })),
-    hazards: p.hazards.map((h) => ({ hazard: h.zh, iarc: h.iarc, total: `${round(h.dose)} ${h.unit}`, days: h.days, penalty: round(h.penalty, 1) })),
+    iarc_hazard_exposures: p.hazards.map((h) => ({ hazard: h.zh, iarc: h.iarc, total: `${round(h.dose)} ${h.unit}`, days: h.days })),
     avg_daily_intake: {
       kcal: round(p.avgTotals.energy_kcal), protein_g: round(p.avgTotals.protein_g), fiber_g: round(p.avgTotals.fiber_g),
       sodium_mg: round(p.avgTotals.sodium_mg), added_sugars_g: round(p.avgTotals.added_sugars_g), sat_fat_g: round(p.avgTotals.sat_fat_g),

@@ -1,11 +1,13 @@
 import { Fragment, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Plus, Pencil, Trash2, Footprints, Flame, Scale, CircleX, CircleCheck, ShieldAlert, Utensils, ChartLine, Info, Droplets } from "lucide-react";
+import { Plus, Pencil, Trash2, Footprints, Flame, Scale, CircleX, CircleCheck, ShieldAlert, Utensils, ChartLine, Info, Droplets, Sparkles } from "lucide-react";
 import { api, qs } from "../api";
 import { useApp, useLoad } from "../lib/app";
 import type { DayResponse, DailyScore, Targets, Meal, Status } from "../types";
 import { fmt, mealZh, localToday } from "../lib/format";
 import { DateNav, Empty, IarcChip, Loading, Meter, ScoreRing, SourceLinks, StatusBadge, Seg, statusColor } from "../components/ui";
+import { ActivityRecognizer } from "../components/ActivityRecognizer";
+import { Le8Card, WcrfCard } from "../components/HealthIndices";
 
 export default function Today() {
   const { username } = useParams();
@@ -82,6 +84,11 @@ function DayView({ data, other, onDelMeal, onReload }: { data: DayResponse; othe
         </div>
       )}
 
+      <div className="grid g2">
+        <Le8Card ix={data.indices} />
+        <WcrfCard ix={data.indices} />
+      </div>
+
       {s.hazards.length > 0 && <HazardsCard s={s} />}
 
       <div className="grid g2">
@@ -151,7 +158,7 @@ function DayView({ data, other, onDelMeal, onReload }: { data: DayResponse; othe
             </div>
           )}
         </div>
-        <ActivityCard data={data} other={other} />
+        <ActivityCard data={data} other={other} onReload={onReload} />
       </div>
 
       {s.hasData && <DetailTabs s={s} t={t} />}
@@ -160,27 +167,35 @@ function DayView({ data, other, onDelMeal, onReload }: { data: DayResponse; othe
 }
 
 function ScoreCard({ s }: { s: DailyScore }) {
+  const { meta } = useApp();
+  const mar = s.mar;
   return (
     <div className="card">
       <div className="card-head">
-        <h2>健康评分</h2>
-        {s.hasData && <span className="hint">评分规则 v1 · <Link to="/standards?tab=rules">怎么算的？</Link></span>}
+        <h2>今日膳食质量</h2>
+        {s.hasData && <span className="hint">HEI-2020（USDA/NCI） · <Link to="/standards?tab=rules">评分依据</Link></span>}
       </div>
       <div className="hero-score">
-        <ScoreRing score={s.score} grade={s.grade ? `${s.grade.key} · ${s.grade.zh}` : "暂无记录"} />
+        <ScoreRing score={s.score} grade={s.score != null ? `美国平均 ${meta?.heiUsMean ?? 58}` : "暂无记录"} />
         <div className="col grow" style={{ gap: 12, minWidth: 200 }}>
-          {s.categories.length ? (
-            s.categories.map((c) => (
-              <Meter key={c.key} name={c.zh} value={c.points} unit={`/ ${c.maxPoints} 分`} max={c.maxPoints} decimals={1}
-                status={c.score >= 85 ? "good" : c.score >= 60 ? "warn" : "bad"} />
-            ))
+          {s.hei ? (
+            <>
+              <Meter name="HEI-2020 膳食质量" value={s.hei.total} unit="/ 100" max={100} decimals={1}
+                status={s.hei.total >= 80 ? "good" : s.hei.total >= 51 ? "warn" : "bad"}
+                foot="13 个组分按每 1000 kcal 的密度计分，分值由 USDA 规定" />
+              {mar && (
+                <Meter name="微量营养素充足 MAR" value={mar.value} unit="/ 100" max={100}
+                  status={mar.value >= 90 ? "good" : mar.value >= 70 ? "warn" : "bad"}
+                  foot={`11 种微量营养素达到 RDA 的平均比例（每种封顶 100%，等权）；最缺：${mar.nutrients.slice().sort((a, b) => a.nar - b.nar).slice(0, 2).map((n) => n.zh).join("、")}`} />
+              )}
+              {s.hazards.length > 0 && (
+                <div className="row small" style={{ color: "var(--critical-text)" }}>
+                  <ShieldAlert size={15} /> {s.hazards.length} 项致癌/风险物警示（见下方）
+                </div>
+              )}
+            </>
           ) : (
-            <p className="muted">记录饮食后，这里会显示膳食质量、营养素充足、限量控制、能量平衡四项得分。</p>
-          )}
-          {s.hazardPenalty > 0 && (
-            <div className="row small" style={{ color: "var(--critical-text)" }}>
-              <ShieldAlert size={15} /> 致癌/风险物扣分 −{fmt(s.hazardPenalty, 1)}
-            </div>
+            <p className="muted">记录饮食后，这里显示 USDA 的 HEI-2020 膳食质量分和 11 种微量营养素的充足度（MAR）。</p>
           )}
         </div>
       </div>
@@ -264,7 +279,7 @@ function EnergyCard({ s, t, data }: { s: DailyScore; t: Targets; data: DayRespon
 function HighlightsCard({ s }: { s: DailyScore }) {
   return (
     <div className="card">
-      <div className="card-head"><h2>今日要点</h2><span className="hint">按扣分多少排序</span></div>
+      <div className="card-head"><h2>今日要点</h2><span className="hint">风险警示、超标项、HEI 扣分最多的组分</span></div>
       {s.top.issues.map((x, i) => (
         <div className="issue" key={`i${i}`}>
           <CircleX color="var(--critical)" aria-label="问题" />
@@ -323,8 +338,8 @@ function HazardsCard({ s }: { s: DailyScore }) {
   return (
     <div className="card">
       <div className="card-head">
-        <h2><ShieldAlert size={18} /> 致癌物与风险物</h2>
-        <span className="hint">合计扣 {fmt(s.hazardPenalty, 1)} 分（上限 {meta?.hazardTotalCap ?? 30}）</span>
+        <h2><ShieldAlert size={18} /> 致癌物与风险物警示</h2>
+        <span className="hint">IARC 分级表示证据强度；加工肉、红肉、酒精、含糖饮料计入 WCRF 防癌评分</span>
       </div>
       <div className="list">
         {s.hazards.map((h) => {
@@ -341,9 +356,6 @@ function HazardsCard({ s }: { s: DailyScore }) {
                 {def && <div className="small muted">{def.risk}。建议：{def.advice}</div>}
                 {meta && <SourceLinks ids={h.sources} sources={meta.sources} />}
               </div>
-              <span className="tnum" style={{ fontWeight: 650, color: h.penalty > 0 ? "var(--critical-text)" : "var(--ink-3)", whiteSpace: "nowrap" }}>
-                {h.penalty > 0 ? `−${fmt(h.penalty, 1)}` : "不扣分"}
-              </span>
             </div>
           );
         })}
@@ -352,19 +364,26 @@ function HazardsCard({ s }: { s: DailyScore }) {
   );
 }
 
-function ActivityCard({ data, other }: { data: DayResponse; other: boolean }) {
+function ActivityCard({ data, other, onReload }: { data: DayResponse; other: boolean; onReload: () => void }) {
   const a = data.activity;
   const nav = useNavigate();
+  const [mode, setMode] = useState<"ai" | "manual" | null>(null);
   return (
     <div className="card">
       <div className="card-head">
         <h2><Footprints size={18} /> 活动与身体</h2>
-        {!other && <button className="btn sm" onClick={() => nav(`/body?date=${data.date}`)}>记录体重 / 运动</button>}
+        {!other && (
+          <div className="row" style={{ gap: 6 }}>
+            <button className="btn sm" onClick={() => setMode("manual")}><Pencil /> 填写</button>
+            <button className="btn sm primary" onClick={() => setMode("ai")}><Sparkles /> AI 识别截图</button>
+          </div>
+        )}
       </div>
-      <div className="grid g3" style={{ gap: 10 }}>
+      <div className="grid g4" style={{ gap: 10 }}>
         <div className="stat"><span className="label">步数</span><span className="value">{a?.steps != null ? fmt(a.steps) : "—"}</span></div>
         <div className="stat"><span className="label">活动能量</span><span className="value">{a?.active_kcal != null ? fmt(a.active_kcal) : "—"}<small>kcal</small></span></div>
         <div className="stat"><span className="label">运动消耗</span><span className="value">{fmt(data.score.energy.exerciseKcal)}<small>kcal</small></span></div>
+        <div className="stat"><span className="label">睡眠</span><span className="value">{a?.sleep_hours != null ? fmt(a.sleep_hours, 1) : "—"}<small>小时</small></span></div>
       </div>
       {data.exercises.length > 0 && (
         <div className="list" style={{ marginTop: 10 }}>
@@ -383,12 +402,17 @@ function ActivityCard({ data, other }: { data: DayResponse; other: boolean }) {
             <div className="list-item" key={b.id}>
               <Scale size={16} color="var(--series-1)" />
               <span className="grow">{b.time} 称重</span>
-              <span className="tnum">{b.weight_kg != null ? `${fmt(b.weight_kg, 1)} kg` : ""}{b.body_fat_pct != null ? ` · 体脂 ${fmt(b.body_fat_pct, 1)}%` : ""}</span>
+              <span className="tnum">{b.weight_kg != null ? `${fmt(b.weight_kg, 1)} kg` : ""}{b.body_fat_pct != null ? ` · 体脂 ${fmt(b.body_fat_pct, 1)}%` : ""}{b.sbp != null ? ` · 血压 ${fmt(b.sbp)}/${fmt(b.dbp)}` : ""}</span>
             </div>
           ))}
         </div>
       )}
-      {!a && !data.exercises.length && !data.body.length && <p className="muted small" style={{ marginTop: 10 }}>没有活动数据时按档案中的活动水平估算消耗。可在“身体与运动”里连接 iPhone 快捷指令自动同步步数和活动能量。</p>}
+      {!a && !data.exercises.length && !data.body.length && (
+        <p className="muted small" style={{ marginTop: 10 }}>
+          点“填写”直接录入今天的步数、活动能量、睡眠、体重；或点“AI 识别截图”上传苹果健康 / 手表截图，或者说一句“今天走了 8000 步，游泳 5km”。{!other && <> 也可以在 <a onClick={() => nav(`/body?date=${data.date}`)} style={{ cursor: "pointer" }}>身体与运动</a> 里设置 iPhone 快捷指令自动同步。</>}
+        </p>
+      )}
+      {mode && <ActivityRecognizer date={data.date} current={a} mode={mode} onClose={() => setMode(null)} onDone={() => { setMode(null); onReload(); }} />}
     </div>
   );
 }
@@ -509,21 +533,23 @@ function HeiView({ s }: { s: DailyScore }) {
 function ItemsView({ s }: { s: DailyScore }) {
   const { meta } = useApp();
   const cats = [
-    { key: "hei", zh: "膳食质量 (HEI-2020)" },
-    { key: "adequacy", zh: "营养素充足" },
-    { key: "moderation", zh: "限量控制" },
-    { key: "energy", zh: "能量平衡" },
+    { key: "hei", zh: "HEI-2020 膳食质量（USDA 官方分值）", withPoints: true },
+    { key: "mar", zh: "MAR 计分的 11 种微量营养素（等权）", withPoints: false },
+    { key: "adequacy", zh: "其他营养素（对照 RDA/AI，只标状态）", withPoints: false },
+    { key: "moderation", zh: "限量与其他标准（只标状态）", withPoints: false },
+    { key: "energy", zh: "能量平衡（只标状态）", withPoints: false },
   ];
   return (
     <div className="stack">
       {cats.map((c) => {
         const its = s.items.filter((i) => i.category === c.key);
-        const cat = s.categories.find((x) => x.key === c.key);
+        if (!its.length) return null;
         return (
           <div key={c.key}>
             <div className="row between" style={{ marginBottom: 6 }}>
               <h3>{c.zh}</h3>
-              {cat && <span className="small tnum sec">{fmt(cat.points, 1)} / {cat.maxPoints} 分</span>}
+              {c.key === "hei" && s.hei && <span className="small tnum sec">{fmt(s.hei.total, 1)} / 100</span>}
+              {c.key === "mar" && s.mar && <span className="small tnum sec">MAR {fmt(s.mar.value)} / 100</span>}
             </div>
             <div className="table-wrap">
               <table className="table">
@@ -533,9 +559,9 @@ function ItemsView({ s }: { s: DailyScore }) {
                       <td style={{ width: 110 }}><StatusBadge status={i.status} /></td>
                       <td>
                         <div>{i.message}</div>
-                        <div className="small muted">目标：{i.targetText} {meta && <SourceLinks ids={i.sources} sources={meta.sources} />}</div>
+                        <div className="small muted">标准：{i.targetText} {meta && <SourceLinks ids={i.sources} sources={meta.sources} />}</div>
                       </td>
-                      <td className="num small">{i.maxPoints > 0 ? `${fmt(i.points, 1)} / ${fmt(i.maxPoints, 1)}` : "—"}</td>
+                      <td className="num small">{c.withPoints ? `${fmt(i.points, 1)} / ${i.maxPoints}` : ""}</td>
                     </tr>
                   ))}
                 </tbody>

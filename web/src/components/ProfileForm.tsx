@@ -13,6 +13,7 @@ export function ProfileForm({ initial, onSaved, submitText = "保存" }: { initi
     initial ?? {
       sex: "male", birth_date: "1995-01-01", height_cm: 170, weight_kg: 65, activity_level: "low_active", goal: "maintain",
       goal_rate_kg_week: 0.5, target_weight_kg: null, physiology: "none", sodium_mode: "cdrr", conditions: [], timezone: guessTz,
+      nicotine: "unknown", secondhand_smoke: false,
     },
   );
   const [busy, setBusy] = useState(false);
@@ -123,6 +124,28 @@ export function ProfileForm({ initial, onSaved, submitText = "保存" }: { initi
               </button>
             );
           })}
+        </div>
+      </div>
+
+      <div className="grid g2">
+        <div className="field">
+          <label>吸烟情况（AHA Life's Essential 8 的“尼古丁暴露”）</label>
+          <select className="input" value={p.nicotine ?? "unknown"} onChange={(e) => set("nicotine", e.target.value as Profile["nicotine"])}>
+            <option value="unknown">不填写（LE8 不计这一项）</option>
+            <option value="never">从不吸烟</option>
+            <option value="former_5y">已戒烟 5 年以上</option>
+            <option value="former_1_5y">已戒烟 1–5 年</option>
+            <option value="former_lt1y">戒烟不到 1 年</option>
+            <option value="ecig">使用电子烟</option>
+            <option value="current">目前吸烟</option>
+          </select>
+        </div>
+        <div className="field">
+          <label>二手烟</label>
+          <label className="check" style={{ height: 40 }}>
+            <input type="checkbox" checked={!!p.secondhand_smoke} onChange={(e) => set("secondhand_smoke", e.target.checked)} />
+            家中有人在室内吸烟
+          </label>
         </div>
       </div>
 

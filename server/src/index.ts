@@ -7,6 +7,7 @@ import { accountRouter } from "./routes/account.ts";
 import { logRouter } from "./routes/log.ts";
 import { bodyRouter } from "./routes/body.ts";
 import { reportsRouter } from "./routes/reports.ts";
+import { docsRouter } from "./routes/docs.ts";
 import { HttpError } from "./lib/http.ts";
 import { failStaleJobs } from "./ai/jobs.ts";
 import { activeProvider } from "./ai/providers.ts";
@@ -18,13 +19,34 @@ app.set("trust proxy", true);
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: false }));
 
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true });
+// 跨域（供 Web 版 App 或其他域名的前端调用；原生 App 不受 CORS 限制）
+app.use("/api", (req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && (config.corsOrigins.includes("*") || config.corsOrigins.includes(origin))) {
+    res.setHeader("Access-Control-Allow-Origin", config.corsOrigins.includes("*") ? "*" : origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Max-Age", "86400");
+  }
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+  next();
 });
-app.use("/api", accountRouter);
-app.use("/api", bodyRouter);
-app.use("/api", logRouter);
-app.use("/api", reportsRouter);
+
+// 同一套接口同时挂在 /api 与 /api/v1（App 建议使用带版本号的路径）
+for (const prefix of ["/api/v1", "/api"]) {
+  app.get(`${prefix}/health`, (_req, res) => {
+    res.json({ ok: true, version: "1" });
+  });
+  app.use(prefix, docsRouter);
+  app.use(prefix, accountRouter);
+  app.use(prefix, bodyRouter);
+  app.use(prefix, logRouter);
+  app.use(prefix, reportsRouter);
+}
 app.use("/api", (_req, res) => {
   res.status(404).json({ error: "接口不存在" });
 });

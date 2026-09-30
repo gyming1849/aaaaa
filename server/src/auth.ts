@@ -39,7 +39,7 @@ export const sha256 = (s: string) => crypto.createHash("sha256").update(s).diges
 export function createSession(res: Response, userId: number) {
   const token = crypto.randomBytes(32).toString("base64url");
   const expires = new Date(Date.now() + config.sessionDays * 86400_000);
-  db.prepare("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)").run(
+  db.prepare("INSERT INTO sessions (token_hash, user_id, expires_at, kind, created_at, last_used_at) VALUES (?, ?, ?, 'web', datetime('now'), datetime('now'))").run(
     sha256(token),
     userId,
     expires.toISOString(),
@@ -53,8 +53,23 @@ export function createSession(res: Response, userId: number) {
   });
 }
 
+/** 为移动 App / 第三方客户端签发 Bearer 令牌（默认 365 天） */
+export function createAppToken(userId: number, deviceName: string): { token: string; expires_at: string } {
+  const token = `nla_${crypto.randomBytes(32).toString("base64url")}`;
+  const expires = new Date(Date.now() + config.appTokenDays * 86400_000).toISOString();
+  db.prepare(
+    "INSERT INTO sessions (token_hash, user_id, expires_at, kind, device_name, created_at, last_used_at) VALUES (?, ?, ?, 'app', ?, datetime('now'), datetime('now'))",
+  ).run(sha256(token), userId, expires, deviceName.slice(0, 60));
+  return { token, expires_at: expires };
+}
+
+function bearer(req: Request): string | undefined {
+  const auth = req.headers.authorization;
+  return auth?.startsWith("Bearer ") ? auth.slice(7).trim() : undefined;
+}
+
 export function destroySession(req: Request, res: Response) {
-  const token = readCookie(req, COOKIE);
+  const token = readCookie(req, COOKIE) ?? bearer(req);
   if (token) db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(sha256(token));
   res.clearCookie(COOKIE, { path: "/" });
 }
@@ -70,25 +85,30 @@ function readCookie(req: Request, name: string): string | undefined {
 }
 
 function userFromSession(req: Request): AuthedUser | undefined {
-  const token = readCookie(req, COOKIE);
+  // 网页用 Cookie；App 用 Authorization: Bearer nla_...
+  const cookie = readCookie(req, COOKIE);
+  const b = bearer(req);
+  const token = cookie ?? (b && !b.startsWith("nl_") ? b : undefined);
   if (!token) return undefined;
+  const hash = sha256(token);
   const row = db
     .prepare(
-      `SELECT u.id, u.username, u.display_name, s.expires_at
+      `SELECT u.id, u.username, u.display_name, s.expires_at, s.kind
        FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`,
     )
-    .get(sha256(token)) as (AuthedUser & { expires_at: string }) | undefined;
+    .get(hash) as (AuthedUser & { expires_at: string; kind: string }) | undefined;
   if (!row) return undefined;
   if (new Date(row.expires_at) < new Date()) {
-    db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(sha256(token));
+    db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(hash);
     return undefined;
   }
+  if (row.kind === "app") db.prepare("UPDATE sessions SET last_used_at = datetime('now') WHERE token_hash = ?").run(hash);
   return { id: row.id, username: row.username, display_name: row.display_name };
 }
 
 function userFromApiToken(req: Request): AuthedUser | undefined {
-  const auth = req.headers.authorization;
-  const token = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : (req.query.token as string | undefined);
+  const b = bearer(req);
+  const token = b?.startsWith("nl_") ? b : (req.query.token as string | undefined);
   if (!token) return undefined;
   return db
     .prepare("SELECT id, username, display_name FROM users WHERE api_token_hash = ?")
@@ -98,7 +118,7 @@ function userFromApiToken(req: Request): AuthedUser | undefined {
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
   const user = userFromSession(req);
   if (!user) {
-    res.status(401).json({ error: "未登录" });
+    res.status(401).json({ error: "未登录或令牌已失效" });
     return;
   }
   req.user = user;

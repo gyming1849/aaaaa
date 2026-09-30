@@ -28,6 +28,9 @@ export const config = {
   uploadDir: path.join(dataDir, "uploads"),
   webDist: path.join(ROOT_DIR, "web", "dist"),
   sessionDays: Number(env.SESSION_DAYS ?? 30),
+  appTokenDays: Number(env.APP_TOKEN_DAYS ?? 365),
+  /** 允许跨域访问 API 的来源（逗号分隔，* 表示全部）；原生 App 不需要 */
+  corsOrigins: (env.CORS_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
   /** 设置后注册需要邀请码 */
   inviteCode: env.INVITE_CODE ?? "",
   allowRegistration: (env.ALLOW_REGISTRATION ?? "true") !== "false",

@@ -104,6 +104,15 @@ export const FOOD_GROUPS: FoodGroupDef[] = [
   { key: "red_meat_g", zh: "红肉(熟重)", unit: "g", note: "猪、牛、羊等哺乳动物肌肉，不含加工肉" },
   { key: "processed_meat_g", zh: "加工肉", unit: "g", note: "培根、火腿、香肠、腊肉、午餐肉、肉干等腌/熏/发酵肉" },
   { key: "poultry_g", zh: "禽肉", unit: "g", note: "鸡、鸭、鹅等" },
+  // 以下用于 WCRF/AICR 防癌评分与 AHA LE8 的 MEPA 饮食问卷
+  { key: "fruit_veg_g", zh: "水果+非淀粉类蔬菜", unit: "g", note: "WCRF：每天 ≥400 g；不含土豆等淀粉类根茎、豆类和果汁" },
+  { key: "berries_cup", zh: "浆果", unit: "杯当量", note: "草莓、蓝莓、树莓、桑葚等（是水果总量的一部分）" },
+  { key: "olive_oil_g", zh: "橄榄油", unit: "g", note: "1 汤匙 ≈ 13.5 g" },
+  { key: "butter_cream_g", zh: "黄油/奶油", unit: "g", note: "黄油、奶油、淡奶油；1 汤匙 ≈ 14 g" },
+  { key: "cheese_g", zh: "全脂奶酪/奶油奶酪", unit: "g", note: "1 盎司 ≈ 28 g" },
+  { key: "nuts_g", zh: "坚果种子", unit: "g", note: "花生、核桃、杏仁、瓜子等；¼ 杯 ≈ 30 g" },
+  { key: "sweets_serv", zh: "商业甜点/糖果/糕点", unit: "份", note: "蛋糕、饼干、糖果、甜甜圈、冰淇淋等，按常见一份计" },
+  { key: "ssb_ml", zh: "含糖饮料", unit: "ml", note: "含添加糖/蜂蜜/糖浆的饮料，含加糖果汁、奶茶；不含无糖饮料" },
 ];
 
 export const FOOD_GROUP_KEYS = FOOD_GROUPS.map((g) => g.key);

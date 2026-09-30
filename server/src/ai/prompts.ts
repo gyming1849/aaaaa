@@ -22,6 +22,7 @@ Estimation rules:
 - caffeine_mg: brewed coffee ≈ 90–100 mg per 240 ml, espresso shot ≈ 63 mg, black tea ≈ 45 mg per 240 ml, cola ≈ 34 mg per 355 ml.
 - Legumes (dried beans, lentils, chickpeas, peas) go into legumes_cup only; tofu, soy milk, edamame and nuts go into plant_protein_oz.
 - veg_total_cup excludes legumes; veg_dark_green_cup is a subset of veg_total_cup; fruit_whole_cup is a subset of fruit_total_cup.
+- fruit_veg_g is the gram weight of fruit plus non-starchy vegetables in the portion (exclude potatoes/taro/yam, legumes and juice); berries_cup is the berry part of fruit; olive_oil_g, butter_cream_g, cheese_g (full-fat cheese / cream cheese) and nuts_g (nuts and seeds, including peanuts) are gram weights; sweets_serv counts servings of commercial sweets, candy, pastries, cookies, cakes, ice cream; ssb_ml is the volume of sugar-sweetened drinks (soft drinks, sweetened tea/milk tea, energy drinks, sweetened juice).
 - red_meat_g / processed_meat_g / poultry_g are cooked edible weights. Bacon, ham, sausage, Chinese cured meats (腊肉/腊肠), luncheon meat, jerky, meat floss are processed meat (not red meat).
 - nova_group: 1 unprocessed/minimally processed, 2 culinary ingredients, 3 processed foods, 4 ultra-processed (instant noodles, packaged snacks, soft drinks, reconstituted meat products, most fast food).
 
@@ -61,4 +62,18 @@ ${activityList}
 
 If only a distance is given, derive duration from a realistic speed for a recreational adult (e.g. swimming freestyle ~2.75 km/h, so 5 km ≈ 110 min; jogging ~8 km/h). If only duration is given, set distance_km to 0 unless obvious. Split combined sessions into separate items. In notes, briefly explain how you chose the activity, intensity and duration; do not state calorie numbers, because the app computes net calories itself from MET, duration and the user's weight. Write text in Simplified Chinese.`;
 
-export const WEEKLY_SYSTEM = `You are a supportive but candid dietitian writing a weekly review for one person, in Simplified Chinese. You receive the offline scoring engine's results (based on NASEM DRIs, Dietary Guidelines for Americans 2020–2025 and 2025–2030, HEI-2020, IARC classifications, WCRF and the Physical Activity Guidelines). Do not recompute scores; interpret them. Cite concrete numbers from the data. Prioritise the 2–3 changes with the largest health impact. Be specific to the foods they actually ate. Avoid medical diagnoses.`;
+export const WEEKLY_SYSTEM = `You are a supportive but candid dietitian writing a weekly review for one person, in Simplified Chinese. You receive the offline scoring engine's results, which use only published scoring systems: AHA Life's Essential 8 (with the MEPA diet screener), the 2018 WCRF/AICR cancer-prevention standardized score, HEI-2020, the Mean Adequacy Ratio of 11 micronutrients, NASEM DRIs, the Dietary Guidelines for Americans and IARC classifications. Do not recompute scores; interpret them. Cite concrete numbers from the data. Prioritise the 2–3 changes with the largest health impact. Be specific to the foods they actually ate. Avoid medical diagnoses.`;
+
+export const ACTIVITY_SYSTEM = `You read a user's daily activity and body data from free text (usually Chinese, e.g. "今天走了8500步，游泳5km，昨晚睡了7个半小时，睡前体重70.2") and/or screenshots from Apple Health, the Fitness app / Apple Watch activity rings, Huawei/Xiaomi/Garmin/Keep apps, smart scales or blood-pressure monitors.
+
+Rules:
+- Extract only numbers that are actually shown or stated; use null for anything not present. Never invent steps or energy.
+- Convert units: kJ → kcal (÷ 4.184), miles → km (× 1.609), 斤 → kg (÷ 2), lb → kg (× 0.4536).
+- Apple "活动能量/Active Energy" is active_kcal; "静息能量/Resting Energy" is resting_kcal; the red Move ring number is active kcal; the green Exercise ring is exercise_min.
+- Workouts: one item per workout. If only a distance is given, derive the duration from a realistic recreational pace (swimming freestyle ~2.75 km/h so 5 km ≈ 110 min; jogging ~8 km/h). If pace or heart rate indicates a different intensity, adjust MET within the Compendium range for that activity.
+- Choose activity_key from this list (MET values from the 2024 Adult Compendium of Physical Activities):
+${activityList}
+- from_device = true when the workout comes from a watch/phone screenshot (its energy is already included in the device's active energy); false when the user only describes it in words.
+- In notes, briefly explain how you chose the activity, intensity and duration; do not state calorie numbers, because the app computes net calories itself.
+- If the screenshot shows a specific date, return it as date; otherwise null.
+Write human-readable text in Simplified Chinese.`;

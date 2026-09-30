@@ -52,20 +52,20 @@ export const MOCK_FOODS: MockFood[] = [
   { kw: ["三文鱼", "鲑鱼"], name: "三文鱼", serving: 120, unit: "份", nova: 1, cat: "seafood", cook: "煎", n: { energy_kcal: 206, protein_g: 22, fat_g: 12, sat_fat_g: 2.5, mufa_g: 4.3, pufa_g: 4.4, epa_dha_g: 2.2, ala_g: 0.1, linoleic_g: 0.2, cholesterol_mg: 63, sodium_mg: 61, potassium_mg: 384, phosphorus_mg: 252, selenium_ug: 41, vit_d_ug: 11, vit_b12_ug: 3, vit_b6_mg: 0.6, niacin_mg: 8.5, choline_mg: 90, water_g: 62 }, g: { seafood_oz: 3.5 } },
   { kw: ["虾"], name: "虾", serving: 100, unit: "份", nova: 1, cat: "seafood", cook: "煮", n: { energy_kcal: 99, protein_g: 24, fat_g: 0.3, epa_dha_g: 0.3, cholesterol_mg: 189, sodium_mg: 111, potassium_mg: 259, calcium_mg: 70, zinc_mg: 1.6, copper_mg: 0.3, selenium_ug: 38, iodine_ug: 35, vit_b12_ug: 1.1, choline_mg: 80, water_g: 75 }, g: { seafood_oz: 3.5 } },
   { kw: ["鱼"], name: "清蒸鱼", serving: 150, unit: "份", nova: 1, cat: "seafood", cook: "蒸", n: { energy_kcal: 110, protein_g: 20, fat_g: 3, sat_fat_g: 0.7, mufa_g: 1, pufa_g: 0.9, epa_dha_g: 0.3, cholesterol_mg: 60, sodium_mg: 250, potassium_mg: 350, phosphorus_mg: 210, selenium_ug: 36, iodine_ug: 20, vit_d_ug: 2, vit_b12_ug: 1.5, water_g: 75 }, g: { seafood_oz: 3.5 } },
-  { kw: ["西兰花", "西蓝花"], name: "西兰花", serving: 150, unit: "份", nova: 1, cat: "vegetable", cook: "炒", n: { energy_kcal: 35, protein_g: 2.4, carb_g: 7, fat_g: 0.4, fiber_g: 3.3, sugars_g: 1.4, sodium_mg: 41, potassium_mg: 293, calcium_mg: 40, iron_mg: 0.7, magnesium_mg: 21, vit_c_mg: 65, vit_k_ug: 141, vit_a_ug: 77, folate_ug: 108, vit_e_mg: 1.5, water_g: 89 }, g: { veg_total_cup: 0.64, veg_dark_green_cup: 0.64 } },
-  { kw: ["菠菜", "青菜", "油菜", "小白菜", "空心菜", "生菜", "油麦菜", "菜心"], name: "绿叶蔬菜", serving: 150, unit: "份", nova: 1, cat: "vegetable", cook: "炒", n: { energy_kcal: 23, protein_g: 2.5, carb_g: 3.6, fat_g: 0.3, fiber_g: 2.4, sodium_mg: 70, potassium_mg: 450, calcium_mg: 130, iron_mg: 2.5, magnesium_mg: 80, vit_a_ug: 300, vit_c_mg: 20, vit_k_ug: 300, folate_ug: 150, vit_e_mg: 2, water_g: 91 }, g: { veg_total_cup: 0.56, veg_dark_green_cup: 0.56 } },
-  { kw: ["番茄", "西红柿"], name: "番茄", serving: 150, unit: "个", nova: 1, cat: "vegetable", n: { energy_kcal: 18, protein_g: 0.9, carb_g: 3.9, fiber_g: 1.2, sugars_g: 2.6, potassium_mg: 237, vit_c_mg: 14, vit_a_ug: 42, vit_k_ug: 8, folate_ug: 15, water_g: 94 }, g: { veg_total_cup: 0.56 } },
-  { kw: ["黄瓜"], name: "黄瓜", serving: 150, unit: "根", nova: 1, cat: "vegetable", n: { energy_kcal: 15, protein_g: 0.7, carb_g: 3.6, fiber_g: 0.5, potassium_mg: 147, vit_k_ug: 16, water_g: 95 }, g: { veg_total_cup: 0.96 } },
+  { kw: ["西兰花", "西蓝花"], name: "西兰花", serving: 150, unit: "份", nova: 1, cat: "vegetable", cook: "炒", n: { energy_kcal: 35, protein_g: 2.4, carb_g: 7, fat_g: 0.4, fiber_g: 3.3, sugars_g: 1.4, sodium_mg: 41, potassium_mg: 293, calcium_mg: 40, iron_mg: 0.7, magnesium_mg: 21, vit_c_mg: 65, vit_k_ug: 141, vit_a_ug: 77, folate_ug: 108, vit_e_mg: 1.5, water_g: 89 }, g: { fruit_veg_g: 100, veg_total_cup: 0.64, veg_dark_green_cup: 0.64 } },
+  { kw: ["菠菜", "青菜", "油菜", "小白菜", "空心菜", "生菜", "油麦菜", "菜心"], name: "绿叶蔬菜", serving: 150, unit: "份", nova: 1, cat: "vegetable", cook: "炒", n: { energy_kcal: 23, protein_g: 2.5, carb_g: 3.6, fat_g: 0.3, fiber_g: 2.4, sodium_mg: 70, potassium_mg: 450, calcium_mg: 130, iron_mg: 2.5, magnesium_mg: 80, vit_a_ug: 300, vit_c_mg: 20, vit_k_ug: 300, folate_ug: 150, vit_e_mg: 2, water_g: 91 }, g: { fruit_veg_g: 100, veg_total_cup: 0.56, veg_dark_green_cup: 0.56 } },
+  { kw: ["番茄", "西红柿"], name: "番茄", serving: 150, unit: "个", nova: 1, cat: "vegetable", n: { energy_kcal: 18, protein_g: 0.9, carb_g: 3.9, fiber_g: 1.2, sugars_g: 2.6, potassium_mg: 237, vit_c_mg: 14, vit_a_ug: 42, vit_k_ug: 8, folate_ug: 15, water_g: 94 }, g: { fruit_veg_g: 100, veg_total_cup: 0.56 } },
+  { kw: ["黄瓜"], name: "黄瓜", serving: 150, unit: "根", nova: 1, cat: "vegetable", n: { energy_kcal: 15, protein_g: 0.7, carb_g: 3.6, fiber_g: 0.5, potassium_mg: 147, vit_k_ug: 16, water_g: 95 }, g: { fruit_veg_g: 100, veg_total_cup: 0.96 } },
   { kw: ["薯条"], name: "薯条", serving: 117, unit: "中份", nova: 4, cat: "fast_food", cook: "炸", n: { energy_kcal: 312, protein_g: 3.4, carb_g: 41, fat_g: 15, sat_fat_g: 2.3, mufa_g: 8, pufa_g: 4, fiber_g: 3.8, sodium_mg: 210, potassium_mg: 579, vit_c_mg: 5, vit_b6_mg: 0.4, water_g: 38 }, g: { veg_total_cup: 0.3 }, hz: { acrylamide: 100 } },
   { kw: ["薯片"], name: "薯片", serving: 40, unit: "小包", nova: 4, cat: "snack", cook: "炸", n: { energy_kcal: 536, protein_g: 7, carb_g: 53, fat_g: 35, sat_fat_g: 3.1, mufa_g: 10, pufa_g: 19, fiber_g: 4.4, sodium_mg: 525, potassium_mg: 1275, vit_c_mg: 20, vit_e_mg: 5, water_g: 2 }, g: { veg_total_cup: 0.4 }, hz: { acrylamide: 100 } },
   { kw: ["土豆", "马铃薯"], name: "土豆", serving: 150, unit: "份", nova: 1, cat: "vegetable", cook: "炒", n: { energy_kcal: 87, protein_g: 1.9, carb_g: 20, fiber_g: 1.8, potassium_mg: 379, vit_c_mg: 13, vit_b6_mg: 0.3, magnesium_mg: 22, water_g: 77 }, g: { veg_total_cup: 0.64 } },
-  { kw: ["苹果"], name: "苹果", serving: 180, unit: "个", nova: 1, cat: "fruit", n: { energy_kcal: 52, protein_g: 0.3, carb_g: 14, fiber_g: 2.4, sugars_g: 10, potassium_mg: 107, vit_c_mg: 4.6, vit_k_ug: 2.2, water_g: 86 }, g: { fruit_total_cup: 0.8, fruit_whole_cup: 0.8 } },
-  { kw: ["香蕉"], name: "香蕉", serving: 120, unit: "根", nova: 1, cat: "fruit", n: { energy_kcal: 89, protein_g: 1.1, carb_g: 23, fiber_g: 2.6, sugars_g: 12, potassium_mg: 358, magnesium_mg: 27, vit_b6_mg: 0.37, vit_c_mg: 8.7, manganese_mg: 0.27, water_g: 75 }, g: { fruit_total_cup: 0.67, fruit_whole_cup: 0.67 } },
-  { kw: ["橙", "橘"], name: "橙子", serving: 150, unit: "个", nova: 1, cat: "fruit", n: { energy_kcal: 47, protein_g: 0.9, carb_g: 12, fiber_g: 2.4, sugars_g: 9.4, potassium_mg: 181, calcium_mg: 40, vit_c_mg: 53, folate_ug: 30, thiamin_mg: 0.09, water_g: 87 }, g: { fruit_total_cup: 0.55, fruit_whole_cup: 0.55 } },
-  { kw: ["坚果", "花生", "核桃", "杏仁", "腰果"], name: "坚果", serving: 30, unit: "小把", nova: 1, cat: "nut_seed", n: { energy_kcal: 600, protein_g: 20, carb_g: 20, fat_g: 52, sat_fat_g: 7, mufa_g: 28, pufa_g: 13, linoleic_g: 12, ala_g: 0.5, fiber_g: 8, magnesium_mg: 200, potassium_mg: 600, phosphorus_mg: 450, zinc_mg: 3, copper_mg: 1.2, manganese_mg: 2, vit_e_mg: 10, niacin_mg: 5, folate_ug: 60, water_g: 3 }, g: { plant_protein_oz: 7 } },
+  { kw: ["苹果"], name: "苹果", serving: 180, unit: "个", nova: 1, cat: "fruit", n: { energy_kcal: 52, protein_g: 0.3, carb_g: 14, fiber_g: 2.4, sugars_g: 10, potassium_mg: 107, vit_c_mg: 4.6, vit_k_ug: 2.2, water_g: 86 }, g: { fruit_veg_g: 100, fruit_total_cup: 0.8, fruit_whole_cup: 0.8 } },
+  { kw: ["香蕉"], name: "香蕉", serving: 120, unit: "根", nova: 1, cat: "fruit", n: { energy_kcal: 89, protein_g: 1.1, carb_g: 23, fiber_g: 2.6, sugars_g: 12, potassium_mg: 358, magnesium_mg: 27, vit_b6_mg: 0.37, vit_c_mg: 8.7, manganese_mg: 0.27, water_g: 75 }, g: { fruit_veg_g: 100, fruit_total_cup: 0.67, fruit_whole_cup: 0.67 } },
+  { kw: ["橙", "橘"], name: "橙子", serving: 150, unit: "个", nova: 1, cat: "fruit", n: { energy_kcal: 47, protein_g: 0.9, carb_g: 12, fiber_g: 2.4, sugars_g: 9.4, potassium_mg: 181, calcium_mg: 40, vit_c_mg: 53, folate_ug: 30, thiamin_mg: 0.09, water_g: 87 }, g: { fruit_veg_g: 100, fruit_total_cup: 0.55, fruit_whole_cup: 0.55 } },
+  { kw: ["坚果", "花生", "核桃", "杏仁", "腰果"], name: "坚果", serving: 30, unit: "小把", nova: 1, cat: "nut_seed", n: { energy_kcal: 600, protein_g: 20, carb_g: 20, fat_g: 52, sat_fat_g: 7, mufa_g: 28, pufa_g: 13, linoleic_g: 12, ala_g: 0.5, fiber_g: 8, magnesium_mg: 200, potassium_mg: 600, phosphorus_mg: 450, zinc_mg: 3, copper_mg: 1.2, manganese_mg: 2, vit_e_mg: 10, niacin_mg: 5, folate_ug: 60, water_g: 3 }, g: { nuts_g: 100, plant_protein_oz: 7 } },
   { kw: ["零度", "无糖可乐", "健怡"], name: "无糖可乐", serving: 330, unit: "罐", nova: 4, cat: "beverage", n: { energy_kcal: 0.4, sodium_mg: 12, caffeine_mg: 9.6, water_g: 99 }, hz: { aspartame: 40 } },
-  { kw: ["可乐", "雪碧", "汽水", "饮料"], name: "含糖汽水", serving: 330, unit: "罐", nova: 4, cat: "beverage", n: { energy_kcal: 42, carb_g: 10.6, sugars_g: 10.6, added_sugars_g: 10.6, sodium_mg: 4, caffeine_mg: 9.6, water_g: 89 } },
-  { kw: ["奶茶"], name: "奶茶", serving: 500, unit: "杯", nova: 4, cat: "beverage", n: { energy_kcal: 80, protein_g: 0.8, carb_g: 13, fat_g: 3, sat_fat_g: 2, trans_fat_g: 0.05, sugars_g: 11, added_sugars_g: 10, sodium_mg: 20, calcium_mg: 25, caffeine_mg: 10, water_g: 83 } },
+  { kw: ["可乐", "雪碧", "汽水", "饮料"], name: "含糖汽水", serving: 330, unit: "罐", nova: 4, cat: "beverage", n: { energy_kcal: 42, carb_g: 10.6, sugars_g: 10.6, added_sugars_g: 10.6, sodium_mg: 4, caffeine_mg: 9.6, water_g: 89 }, g: { ssb_ml: 100 } },
+  { kw: ["奶茶"], name: "奶茶", serving: 500, unit: "杯", nova: 4, cat: "beverage", n: { energy_kcal: 80, protein_g: 0.8, carb_g: 13, fat_g: 3, sat_fat_g: 2, trans_fat_g: 0.05, sugars_g: 11, added_sugars_g: 10, sodium_mg: 20, calcium_mg: 25, caffeine_mg: 10, water_g: 83 }, g: { ssb_ml: 100 } },
   { kw: ["拿铁"], name: "拿铁", serving: 350, unit: "杯", nova: 3, cat: "beverage", n: { energy_kcal: 55, protein_g: 3, carb_g: 5, fat_g: 2.7, sat_fat_g: 1.6, sugars_g: 5, calcium_mg: 110, potassium_mg: 150, riboflavin_mg: 0.15, vit_b12_ug: 0.35, caffeine_mg: 30, water_g: 88 }, g: { dairy_cup: 0.3 } },
   { kw: ["咖啡", "美式"], name: "黑咖啡", serving: 240, unit: "杯", nova: 1, cat: "beverage", n: { energy_kcal: 1, potassium_mg: 49, magnesium_mg: 3, niacin_mg: 0.2, caffeine_mg: 40, water_g: 99 } },
   { kw: ["茶"], name: "茶", serving: 300, unit: "杯", nova: 1, cat: "beverage", n: { energy_kcal: 1, potassium_mg: 37, manganese_mg: 0.2, caffeine_mg: 20, water_g: 99.7 } },
@@ -74,10 +74,10 @@ export const MOCK_FOODS: MockFood[] = [
   { kw: ["红酒", "葡萄酒"], name: "红酒", serving: 150, unit: "杯", nova: 3, cat: "alcohol", n: { energy_kcal: 85, carb_g: 2.6, potassium_mg: 127, alcohol_g: 10.6, water_g: 86 } },
   { kw: ["汉堡"], name: "牛肉汉堡", serving: 200, unit: "个", nova: 4, cat: "fast_food", n: { energy_kcal: 250, protein_g: 13, carb_g: 25, fat_g: 11, sat_fat_g: 4, mufa_g: 4.5, pufa_g: 1.2, trans_fat_g: 0.3, fiber_g: 1.5, sugars_g: 5, added_sugars_g: 4, cholesterol_mg: 35, sodium_mg: 500, potassium_mg: 220, calcium_mg: 80, iron_mg: 2.4, zinc_mg: 2.2, vit_b12_ug: 1, water_g: 48 }, g: { grains_refined_oz: 1.5, red_meat_g: 25, protein_total_oz: 1, veg_total_cup: 0.05 } },
   { kw: ["披萨", "比萨"], name: "披萨", serving: 200, unit: "2块", nova: 4, cat: "fast_food", cook: "烤", n: { energy_kcal: 266, protein_g: 11, carb_g: 33, fat_g: 10, sat_fat_g: 4.5, mufa_g: 2.8, pufa_g: 1.7, fiber_g: 2.3, sugars_g: 3.6, added_sugars_g: 2, cholesterol_mg: 17, sodium_mg: 600, potassium_mg: 172, calcium_mg: 190, water_g: 46 }, g: { grains_refined_oz: 2, dairy_cup: 0.2, veg_total_cup: 0.1 } },
-  { kw: ["蛋糕", "甜点", "饼干", "面包圈", "甜甜圈"], name: "蛋糕/甜点", serving: 80, unit: "块", nova: 4, cat: "dessert", cook: "烤", n: { energy_kcal: 380, protein_g: 5, carb_g: 50, fat_g: 18, sat_fat_g: 8, mufa_g: 6, pufa_g: 2.5, trans_fat_g: 0.2, sugars_g: 35, added_sugars_g: 32, cholesterol_mg: 60, sodium_mg: 300, water_g: 25 }, g: { grains_refined_oz: 1.5 } },
-  { kw: ["泡菜", "酸菜", "咸菜", "榨菜", "梅干菜"], name: "腌菜", serving: 30, unit: "份", nova: 3, cat: "vegetable", n: { energy_kcal: 20, protein_g: 1.2, carb_g: 3.5, fiber_g: 2, sodium_mg: 1500, potassium_mg: 150, vit_c_mg: 5, water_g: 88 }, g: { veg_total_cup: 0.5 }, hz: { pickled_vegetables: 100 } },
+  { kw: ["蛋糕", "甜点", "饼干", "面包圈", "甜甜圈"], name: "蛋糕/甜点", serving: 80, unit: "块", nova: 4, cat: "dessert", cook: "烤", n: { energy_kcal: 380, protein_g: 5, carb_g: 50, fat_g: 18, sat_fat_g: 8, mufa_g: 6, pufa_g: 2.5, trans_fat_g: 0.2, sugars_g: 35, added_sugars_g: 32, cholesterol_mg: 60, sodium_mg: 300, water_g: 25 }, g: { sweets_serv: 1.25, grains_refined_oz: 1.5 } },
+  { kw: ["泡菜", "酸菜", "咸菜", "榨菜", "梅干菜"], name: "腌菜", serving: 30, unit: "份", nova: 3, cat: "vegetable", n: { energy_kcal: 20, protein_g: 1.2, carb_g: 3.5, fiber_g: 2, sodium_mg: 1500, potassium_mg: 150, vit_c_mg: 5, water_g: 88 }, g: { fruit_veg_g: 100, veg_total_cup: 0.5 }, hz: { pickled_vegetables: 100 } },
   { kw: ["槟榔"], name: "槟榔", serving: 10, unit: "颗", nova: 1, cat: "other", n: { energy_kcal: 200, carb_g: 40, fiber_g: 10, water_g: 40 }, hz: { areca_nut: 100 } },
-  { kw: ["沙拉"], name: "蔬菜沙拉", serving: 200, unit: "份", nova: 1, cat: "vegetable", n: { energy_kcal: 20, protein_g: 1.4, carb_g: 3.5, fiber_g: 1.8, potassium_mg: 250, calcium_mg: 35, vit_a_ug: 250, vit_c_mg: 15, vit_k_ug: 100, folate_ug: 60, water_g: 94 }, g: { veg_total_cup: 1.2, veg_dark_green_cup: 0.5 } },
+  { kw: ["沙拉"], name: "蔬菜沙拉", serving: 200, unit: "份", nova: 1, cat: "vegetable", n: { energy_kcal: 20, protein_g: 1.4, carb_g: 3.5, fiber_g: 1.8, potassium_mg: 250, calcium_mg: 35, vit_a_ug: 250, vit_c_mg: 15, vit_k_ug: 100, folate_ug: 60, water_g: 94 }, g: { fruit_veg_g: 100, veg_total_cup: 1.2, veg_dark_green_cup: 0.5 } },
 ];
 
 const CN_NUM: Record<string, number> = { 半: 0.5, 一: 1, 两: 2, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
@@ -227,3 +227,38 @@ export function mockParseExercise(text: string): { items: { description: string;
 }
 
 export { ACTIVITIES };
+
+/** 离线解析身体与活动描述（无法识别截图） */
+export function mockParseActivity(text: string) {
+  const n = (re: RegExp, i = 1) => {
+    const m = text.match(re);
+    return m ? Number(m[i].replace(/,/g, "")) : null;
+  };
+  let sleep = n(/睡了?\s*(\d+(?:\.\d+)?)\s*个?\s*半?\s*小时/);
+  if (sleep != null && /睡了?\s*\d+(?:\.\d+)?\s*个?\s*半\s*小时/.test(text)) sleep += 0.5;
+  let weight = n(/体重\s*(\d+(?:\.\d+)?)/);
+  if (weight != null && /体重\s*\d+(?:\.\d+)?\s*斤/.test(text)) weight /= 2;
+  const bp = text.match(/血压\s*(\d{2,3})\s*[/／]\s*(\d{2,3})/);
+  const exerciseChunks = text
+    .split(/[，,、;；\n。]/)
+    .map((s) => s.trim())
+    .filter((s) => s && !/步(?!行)|睡|体重|血压|体脂|活动能量|消耗/.test(s));
+  const ex = exerciseChunks.length ? mockParseExercise(exerciseChunks.join("，")) : { items: [] };
+  return {
+    date: null,
+    steps: n(/(\d[\d,]*)\s*步(?!行)/),
+    distance_km: null,
+    active_kcal: n(/(?:活动能量|动态消耗|活动消耗|消耗)\s*(\d+)/),
+    resting_kcal: n(/静息(?:能量)?\s*(\d+)/),
+    exercise_min: n(/锻炼\s*(\d+)\s*分钟/),
+    stand_hours: null,
+    sleep_hours: sleep,
+    weight_kg: weight,
+    body_fat_pct: n(/体脂(?:率)?\s*(\d+(?:\.\d+)?)/),
+    sbp: bp ? Number(bp[1]) : null,
+    dbp: bp ? Number(bp[2]) : null,
+    workouts: ex.items.filter((w) => w.activity_key !== "other_moderate" || /运动|锻炼|训练/.test(w.description))
+      .map((w) => ({ ...w, avg_hr: null, device_kcal: null, from_device: false })),
+    notes: "离线规则解析（未配置 AI），无法识别截图",
+  };
+}

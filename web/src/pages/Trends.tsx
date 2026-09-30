@@ -10,6 +10,7 @@ import { useChartTheme, type ChartTheme } from "../lib/theme";
 import { baseOption, lineSeries, legendOption, tipHtml } from "../lib/charts";
 import { EChart } from "../components/EChart";
 import { Loading, Seg, StatusBadge, IarcChip, Empty } from "../components/ui";
+import { Le8Card, WcrfCard } from "../components/HealthIndices";
 
 type RangeKey = "7" | "30" | "90" | "year" | "365" | "all" | "custom";
 
@@ -106,6 +107,12 @@ export default function Trends() {
           </div>
           <NutrientExplorer buckets={buckets} unit={unit} t={t} targets={targets.data} />
           {span >= 45 && <CalendarHeat days={days} t={t} />}
+          {period.data && (
+            <div className="grid g2">
+              <Le8Card ix={period.data.indices} subtitle={`${period.data.start} 至 ${period.data.end}`} />
+              <WcrfCard ix={period.data.indices} subtitle={`${period.data.start} 至 ${period.data.end}`} />
+            </div>
+          )}
           {period.data && <PassRates period={period.data} t={t} />}
           {period.data && period.data.hazards.length > 0 && <HazardTable period={period.data} />}
         </div>
@@ -120,7 +127,7 @@ function SummaryTiles({ period, days }: { period: PeriodScore | null; days: Tren
   const e = period?.energy;
   return (
     <div className="grid g4">
-      <div className="card stat-card"><div className="stat"><span className="label">平均日评分</span><span className="value">{fmt(avgScore)}</span><span className="delta">{logged.length}/{days.length} 天有记录</span></div></div>
+      <div className="card stat-card"><div className="stat"><span className="label">心血管健康 LE8</span><span className="value">{fmt(period?.score)}<small>{period?.category ? `/ 100 · ${period.category.zh}` : ""}</small></span><span className="delta">HEI 日均 {fmt(avgScore)} · {logged.length}/{days.length} 天有记录</span></div></div>
       <div className="card stat-card"><div className="stat"><span className="label">日均摄入 / 消耗</span><span className="value">{fmt(avg(logged.map((d) => d.intake)))}<small>/ {fmt(avg(days.map((d) => d.tdee)))} kcal</small></span></div></div>
       <div className="card stat-card"><div className="stat"><span className="label">趋势体重变化</span>
         <span className="value">{e?.actualChangeKg != null ? `${e.actualChangeKg > 0 ? "+" : ""}${fmt(e.actualChangeKg, 1)}` : "—"}<small>kg</small></span>
@@ -167,23 +174,25 @@ function ScoreChart({ buckets, unit, t }: { buckets: Bucket[]; unit: string; t: 
   // 7 日滚动均值（仅逐日视图）
   const rolling = unit === "day" ? score.map((_, i) => r1(avg(score.slice(Math.max(0, i - 6), i + 1).filter((v): v is number => v != null)))) : null;
   const option: EChartsOption = {
-    ...baseOption(t, { yMin: 0, yMax: 100, legend: !!rolling }),
-    legend: rolling ? { ...legendOption(t), data: ["日评分", "7 日均值"] } : undefined,
+    ...baseOption(t, { yMin: 0, yMax: 100, legend: true }),
+    legend: { ...legendOption(t), data: rolling ? ["日评分", "7 日均值", "美国平均 58"] : [unit === "day" ? "日评分" : "平均评分", "美国平均 58"] },
     xAxis: { ...(baseOption(t).xAxis as object), data: labels },
     tooltip: {
       ...(baseOption(t).tooltip as object),
       formatter: (ps: unknown) => {
         const arr = ps as { axisValue: string; seriesName: string; value: number | null; color: string }[];
-        return tipHtml(arr[0]?.axisValue ?? "", arr.map((p) => ({ color: p.color, name: p.seriesName, value: p.value == null ? "无记录" : fmt(p.value, 1) })), t);
+        return tipHtml(arr[0]?.axisValue ?? "", arr.filter((p) => !p.seriesName.startsWith("美国")).map((p) => ({ color: p.color, name: p.seriesName, value: p.value == null ? "无记录" : fmt(p.value, 1) })), t);
       },
     },
     series: [
       lineSeries(unit === "day" ? "日评分" : "平均评分", score, rolling ? t.axis : t.s1, rolling ? { lineStyle: { width: 1.5, color: t.axis }, itemStyle: { color: t.ink3 } } : {}),
+      // 美国人平均 HEI-2020（USDA）作为参考线
+      { name: "美国平均 58", type: "line" as const, data: score.map(() => 58), showSymbol: false, silent: true, lineStyle: { width: 1, color: t.ink3, type: [4, 4] as number[] }, tooltip: { show: false } },
       ...(rolling ? [lineSeries("7 日均值", rolling, t.s1, { showSymbol: false })] : []),
     ],
   };
   return (
-    <ChartCard title="健康评分" hint="0–100，≥85 优秀 · ≥70 良好 · ≥55 一般" table={{ head: ["日期", "评分", ...(rolling ? ["7 日均值"] : [])], rows: buckets.map((b, i) => [b.label, score[i], ...(rolling ? [rolling[i]] : [])]) }}>
+    <ChartCard title="膳食质量 HEI-2020" hint="USDA 健康饮食指数，0–100；虚线为美国人平均 58 分" table={{ head: ["日期", "评分", ...(rolling ? ["7 日均值"] : [])], rows: buckets.map((b, i) => [b.label, score[i], ...(rolling ? [rolling[i]] : [])]) }}>
       <EChart option={option} height={260} />
     </ChartCard>
   );
@@ -254,9 +263,8 @@ function WeightChart({ buckets, unit, t, period }: { buckets: Bucket[]; unit: st
 function CategoryChart({ buckets, t }: { buckets: Bucket[]; t: ChartTheme }) {
   const labels = buckets.map((b) => b.label);
   const cats = [
-    { key: "hei", zh: "膳食质量", color: t.s1 },
-    { key: "adequacy", zh: "营养素充足", color: t.s2 },
-    { key: "moderation", zh: "限量控制", color: t.s3 },
+    { key: "hei", zh: "HEI-2020", color: t.s1 },
+    { key: "mar", zh: "微量营养素 MAR", color: t.s2 },
   ];
   const data = cats.map((c) => buckets.map((b) => r1(avg(b.logged.map((d) => d.categories[c.key] ?? 0)))));
   const option: EChartsOption = {
@@ -273,7 +281,7 @@ function CategoryChart({ buckets, t }: { buckets: Bucket[]; t: ChartTheme }) {
     series: cats.map((c, i) => lineSeries(c.zh, data[i], c.color)),
   };
   return (
-    <ChartCard title="分项得分" hint="各项 0–100（能量平衡见左侧图）" table={{ head: ["日期", ...cats.map((c) => c.zh)], rows: buckets.map((b, i) => [b.label, ...data.map((d) => d[i])]) }}>
+    <ChartCard title="膳食质量与营养素充足" hint="HEI-2020 与 MAR（11 种微量营养素平均充足比），均为 0–100" table={{ head: ["日期", ...cats.map((c) => c.zh)], rows: buckets.map((b, i) => [b.label, ...data.map((d) => d[i])]) }}>
       <EChart option={option} height={260} />
     </ChartCard>
   );
@@ -291,7 +299,8 @@ const EXTRA_METRICS = [
   { key: "group:grains_whole_oz", zh: "全谷物", unit: "盎司当量" },
   { key: "hei", zh: "HEI-2020 分数", unit: "分" },
   { key: "steps", zh: "步数", unit: "步" },
-  { key: "hazard", zh: "风险物扣分", unit: "分" },
+  { key: "hazard", zh: "风险物警示数", unit: "项" },
+  { key: "mar", zh: "微量营养素 MAR", unit: "分" },
 ];
 
 function NutrientExplorer({ buckets, unit, t, targets }: { buckets: Bucket[]; unit: string; t: ChartTheme; targets: Targets | null }) {
@@ -306,8 +315,9 @@ function NutrientExplorer({ buckets, unit, t, targets }: { buckets: Bucket[]; un
     if (key.startsWith("group:")) return d.groups[key.slice(6)] ?? 0;
     if (key === "upf") return d.upfPct;
     if (key === "hei") return d.hei;
+    if (key === "mar") return d.mar;
     if (key === "steps") return d.steps;
-    if (key === "hazard") return d.hazardPenalty;
+    if (key === "hazard") return d.hazardCount;
     return d.totals[key] ?? 0;
   };
   const values = buckets.map((b) => {
@@ -473,10 +483,10 @@ function PassRates({ period, t }: { period: PeriodScore; t: ChartTheme }) {
 function HazardTable({ period }: { period: PeriodScore }) {
   return (
     <div className="card">
-      <div className="card-head"><h3>风险物暴露汇总</h3></div>
+      <div className="card-head"><h3>风险物暴露汇总</h3><span className="hint">只作警示，不另设扣分</span></div>
       <div className="table-wrap">
         <table className="table">
-          <thead><tr><th>项目</th><th>分级</th><th className="num">出现天数</th><th className="num">累计量</th><th className="num">累计扣分</th></tr></thead>
+          <thead><tr><th>项目</th><th>分级</th><th className="num">出现天数</th><th className="num">累计量</th></tr></thead>
           <tbody>
             {period.hazards.map((h) => (
               <tr key={h.key}>
@@ -484,7 +494,6 @@ function HazardTable({ period }: { period: PeriodScore }) {
                 <td><IarcChip group={h.iarc} /></td>
                 <td className="num">{h.days}</td>
                 <td className="num">{fmt(h.dose)} {h.unit}</td>
-                <td className="num">{fmt(h.penalty, 1)}</td>
               </tr>
             ))}
           </tbody>

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Camera, Sparkles, Trash2, BookmarkPlus, Library, Search, Plus, Check, ShieldAlert, Info, Link as LinkIcon, RefreshCw } from "lucide-react";
+import { Camera, Sparkles, BookmarkPlus, Library, Search, Plus, Check, Info, Link as LinkIcon, RefreshCw } from "lucide-react";
 import { api, qs, uploadPhotos, waitJob } from "../api";
 import { useApp } from "../lib/app";
-import type { DayResponse, DraftItem, Food, MealDraft, MealItem, Vec } from "../types";
-import { CATEGORY_ZH, MEAL_TYPES, NOVA_ZH, fmt, guessMealType, nowTime, localToday } from "../lib/format";
+import type { DailyScore, DayResponse, DraftItem, Food, MealDraft, MealItem, Vec } from "../types";
+import { MEAL_TYPES, fmt, guessMealType, nowTime, localToday } from "../lib/format";
 import { Modal, Seg, Empty } from "../components/ui";
+import { ItemEditor } from "../components/ItemEditor";
+import { ImpactPreview } from "../components/ActivityRecognizer";
 
 const scale = (v: Vec, f: number): Vec => Object.fromEntries(Object.entries(v).map(([k, x]) => [k, x * f]));
 
@@ -18,20 +20,8 @@ function toDraft(it: MealItem): DraftItem {
   };
 }
 
-function rescale(it: DraftItem, grams: number): DraftItem {
-  const f = grams / 100;
-  return {
-    ...it,
-    amount_g: grams,
-    amount_desc: `${fmt(grams)} g`,
-    nutrients: scale(it.per100.nutrients, f),
-    groups: scale(it.per100.groups, f),
-    hazards: it.per100.hazards.map((h) => ({ key: h.key, amount: h.amount_per_100g * f })),
-  };
-}
-
 export default function LogMeal() {
-  const { me, meta, toast } = useApp();
+  const { me, toast } = useApp();
   const nav = useNavigate();
   const [sp] = useSearchParams();
   const editId = sp.get("edit") ? Number(sp.get("edit")) : null;
@@ -133,13 +123,27 @@ export default function LogMeal() {
     }
   }
 
+  // 合并预览：草稿变化时（改克数、删项、改数值）重新计算当天评分，确认前不写入
+  const [preview, setPreview] = useState<{ before: DailyScore; after: DailyScore } | null>(null);
+  useEffect(() => {
+    if (phase !== "review" || !items.length) {
+      setPreview(null);
+      return;
+    }
+    const t = setTimeout(() => {
+      api.post<{ before: DailyScore; after: DailyScore }>("/preview", { date, meal: { meal_type: mealType, time, items, replace_meal_id: editId } })
+        .then(setPreview)
+        .catch(() => setPreview(null));
+    }, 400);
+    return () => clearTimeout(t);
+  }, [items, phase, date, time, mealType, editId]);
+
   const totals = useMemo(() => {
     const t: Vec = {};
     for (const it of items) for (const [k, v] of Object.entries(it.nutrients)) t[k] = (t[k] ?? 0) + v;
     return t;
   }, [items]);
 
-  const hazardName = (k: string) => meta?.hazards.find((h) => h.key === k)?.zh ?? k;
 
   return (
     <div className="stack" style={{ maxWidth: 900 }}>
@@ -247,62 +251,19 @@ export default function LogMeal() {
 
           <div className="card">
             <div className="card-head">
-              <h2>确认食物与份量</h2>
-              <span className="hint">改克数会按比例重算全部营养素</span>
+              <h2>审核解析结果</h2>
+              <span className="hint">可改名称、克数和每项营养数值，删除多余项；确认后才合并</span>
             </div>
             {items.length === 0 && <Empty>没有食物，重新分析或从食物库添加</Empty>}
             <div className="col">
               {items.map((it, idx) => (
-                <div className="item-edit" key={idx}>
-                  <div className="row wrap">
-                    <input className="input sm grow" style={{ minWidth: 160, fontWeight: 600 }} value={it.name}
-                      onChange={(e) => setItems((x) => x.map((y, i) => (i === idx ? { ...y, name: e.target.value } : y)))} aria-label="食物名称" />
-                    <div className="input-affix" style={{ width: 120 }}>
-                      <input className="input sm" type="number" inputMode="decimal" value={Math.round(it.amount_g * 10) / 10}
-                        onChange={(e) => {
-                          const g = Number(e.target.value);
-                          if (g > 0) setItems((x) => x.map((y, i) => (i === idx ? rescale(y, g) : y)));
-                        }} aria-label="克数" />
-                      <span className="affix">g</span>
-                    </div>
-                    <button className="btn ghost sm icon danger" onClick={() => setItems((x) => x.filter((_, i) => i !== idx))} aria-label="移除">
-                      <Trash2 />
-                    </button>
-                  </div>
-                  <div className="macro-line">
-                    <span><b>{fmt(it.nutrients.energy_kcal)}</b> kcal</span>
-                    <span>蛋白 <b>{fmt(it.nutrients.protein_g, 1)}</b>g</span>
-                    <span>碳水 <b>{fmt(it.nutrients.carb_g, 1)}</b>g</span>
-                    <span>脂肪 <b>{fmt(it.nutrients.fat_g, 1)}</b>g</span>
-                    <span>钠 <b>{fmt(it.nutrients.sodium_mg)}</b>mg</span>
-                    <span>添加糖 <b>{fmt(it.nutrients.added_sugars_g, 1)}</b>g</span>
-                    <span>纤维 <b>{fmt(it.nutrients.fiber_g, 1)}</b>g</span>
-                  </div>
-                  <div className="row wrap" style={{ gap: 6 }}>
-                    {it.amount_desc && <span className="chip">{it.amount_desc}</span>}
-                    {it.category && <span className="chip">{CATEGORY_ZH[it.category] ?? it.category}</span>}
-                    {it.nova_group && <span className="chip">NOVA {it.nova_group} · {NOVA_ZH[it.nova_group]}</span>}
-                    {it.food_id && <span className="chip accent"><Library size={12} /> 食物库</span>}
-                    {it.confidence === "low" && <span className="chip">置信度低</span>}
-                    {it.hazards.map((h, i) => (
-                      <span key={i} className={`chip iarc-${meta?.hazards.find((x) => x.key === h.key)?.iarc ?? "2B"}`}>
-                        <ShieldAlert size={12} /> {hazardName(h.key)}
-                      </span>
-                    ))}
-                    {(it.groups.processed_meat_g ?? 0) > 0 && <span className="chip iarc-1"><ShieldAlert size={12} /> 加工肉 {fmt(it.groups.processed_meat_g)} g</span>}
-                    {(it.groups.red_meat_g ?? 0) > 0 && <span className="chip iarc-2A">红肉 {fmt(it.groups.red_meat_g)} g</span>}
-                    <span className="grow" />
-                    {!it.food_id && !it.saved_food_id && (
-                      <button className={`btn sm ${it.save_suggested ? "primary" : ""}`} onClick={() => setSaveItem(idx)}>
-                        <BookmarkPlus /> {it.save_suggested ? "存入食物库（推荐）" : "存入食物库"}
-                      </button>
-                    )}
-                    {it.saved_food_id && <span className="chip accent"><Check size={12} /> 已存入食物库</span>}
-                  </div>
-                  {it.notes && <div className="small muted">{it.notes}</div>}
-                </div>
+                <ItemEditor key={idx} item={it}
+                  onChange={(n) => setItems((x) => x.map((y, i) => (i === idx ? n : y)))}
+                  onRemove={() => setItems((x) => x.filter((_, i) => i !== idx))}
+                  onSave={() => setSaveItem(idx)} />
               ))}
             </div>
+            {preview && items.length > 0 && <div style={{ marginTop: 14 }}><ImpactPreview before={preview.before} after={preview.after} /></div>}
             {items.length > 0 && (
               <>
                 <hr />
@@ -317,7 +278,7 @@ export default function LogMeal() {
                   <div className="row">
                     <button className="btn" onClick={() => setPicker(true)}><Plus /> 添加</button>
                     <button className="btn primary lg" onClick={saveMeal} disabled={saving}>
-                      {saving ? <span className="spinner" /> : <Check />} 保存这一餐
+                      {saving ? <span className="spinner" /> : <Check />} {editId ? "确认修改" : `确认合并到 ${date === today ? "今天" : date}`}
                     </button>
                   </div>
                 </div>

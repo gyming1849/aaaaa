@@ -1,12 +1,16 @@
-// 周期（周/月/任意区间）评估：日均综合分 + 只有按周才有意义的生活方式指标。
-// 周期分 = 70% × 有记录日的日均分 + 30% × 生活方式分
+// 周期（周/月/任意区间）评估，全部使用已发表的评分体系：
+// - 总分：AHA Life's Essential 8（8 项等权平均，缺失项不计入分母）
+// - WCRF/AICR 癌症预防建议标准化评分
+// - 按周期总摄入计算的 HEI-2020，日均 MAR
+// - 其他按周才有意义的指标（红肉/海产/饮酒/运动/力量训练/体重速度）只标“达标 / 不达标”，不加权
 
 import { NUTRIENT_KEYS, FOOD_GROUP_KEYS, emptyVector, addVectors, scaleVector, type NutrientVector } from "../standards/nutrients.ts";
 import { computeHei } from "../standards/hei.ts";
 import { ACTIVITY_MAP } from "../standards/met.ts";
 import { KCAL_PER_KG } from "../standards/energy.ts";
 import type { Profile, Targets } from "../standards/targets.ts";
-import { limitCurve, gradeOf } from "./daily.ts";
+import { limitCurve } from "./daily.ts";
+import type { HealthIndices } from "./indices.ts";
 import type { DailyScore, ExerciseRecord, ActivityRecord, Status } from "./types.ts";
 import { diffDays } from "../lib/dates.ts";
 
@@ -44,7 +48,6 @@ export interface PeriodCheck {
   targetText: string;
   status: Status;
   score: number;
-  weight: number;
   message: string;
   sources: string[];
 }
@@ -54,16 +57,20 @@ export interface PeriodScore {
   end: string;
   days: number;
   daysLogged: number;
-  avgScore: number | null;
-  lifestyleScore: number;
+  /** 有记录日的 HEI-2020 日均分 */
+  avgHei: number | null;
+  /** 日均 MAR */
+  avgMar: number | null;
+  /** 周期总分 = LE8 */
   score: number | null;
-  grade: { key: string; zh: string } | null;
+  category: { key: string; zh: string } | null;
+  indices: HealthIndices;
   hei: ReturnType<typeof computeHei>;
   avgTotals: NutrientVector;
   avgGroups: NutrientVector;
   itemStats: { key: string; zh: string; category: string; good: number; ok: number; warn: number; bad: number; days: number }[];
   checks: PeriodCheck[];
-  hazards: { key: string; zh: string; iarc: string; dose: number; unit: string; penalty: number; days: number }[];
+  hazards: { key: string; zh: string; iarc: string; dose: number; unit: string; days: number }[];
   energy: {
     avgIntake: number | null;
     avgTdee: number;
@@ -87,13 +94,16 @@ export function scorePeriod(args: {
   trend: TrendPoint[];
   profile: Profile;
   targets: Targets;
+  indices: HealthIndices;
 }): PeriodScore {
-  const { start, end, days, exercises, activity, trend, profile, targets: t } = args;
+  const { start, end, days, exercises, activity, trend, profile, targets: t, indices } = args;
   const n = days.length;
   const f = n / 7;
   const logged = days.filter((d) => d.hasData);
   const scored = logged.filter((d) => d.score != null);
-  const avgScore = scored.length ? scored.reduce((s, d) => s + (d.score ?? 0), 0) / scored.length : null;
+  const avgHei = scored.length ? scored.reduce((s, d) => s + (d.score ?? 0), 0) / scored.length : null;
+  const withMar = logged.filter((d) => d.mar);
+  const avgMar = withMar.length ? withMar.reduce((s, d) => s + (d.mar?.value ?? 0), 0) / withMar.length : null;
 
   let totals = emptyVector(NUTRIENT_KEYS);
   let groups = emptyVector(FOOD_GROUP_KEYS);
@@ -126,11 +136,10 @@ export function scorePeriod(args: {
     for (const h of d.hazards) {
       let s = hz.get(h.key);
       if (!s) {
-        s = { key: h.key, zh: h.zh, iarc: h.iarc, dose: 0, unit: h.unit, penalty: 0, days: 0 };
+        s = { key: h.key, zh: h.zh, iarc: h.iarc, dose: 0, unit: h.unit, days: 0 };
         hz.set(h.key, s);
       }
       s.dose += h.dose;
-      s.penalty += h.penalty;
       s.days++;
     }
   }
@@ -146,7 +155,7 @@ export function scorePeriod(args: {
     const { score, status } = limitCurve(v, ideal, limit);
     checks.push({
       key: "red_meat_week", zh: "红肉总量", value: v, unit: "g", targetText: `≤ ${fmt(limit)} g（理想 ≤ ${fmt(ideal)} g）`,
-      status, score, weight: 2, message: `期间红肉约 ${fmt(v)} g`, sources: ["wcrf", "iarc_114"],
+      status, score, message: `期间红肉约 ${fmt(v)} g`, sources: ["wcrf", "iarc_114"],
     });
   }
   // 加工肉（仅提示，日评分已扣分）
@@ -154,7 +163,7 @@ export function scorePeriod(args: {
     const v = groups.processed_meat_g ?? 0;
     checks.push({
       key: "processed_meat_week", zh: "加工肉总量", value: v, unit: "g", targetText: "越少越好（WCRF：很少或不吃）",
-      status: v <= 0 ? "good" : v <= 100 * f ? "warn" : "bad", score: 1, weight: 0,
+      status: v <= 0 ? "good" : v <= 100 * f ? "warn" : "bad", score: 1,
       message: v > 0 ? `期间加工肉约 ${fmt(v)} g（已在每日评分中扣分）` : "没有吃加工肉", sources: ["wcrf", "iarc_114"],
     });
   }
@@ -165,7 +174,7 @@ export function scorePeriod(args: {
     const s = Math.min(1, v / target);
     checks.push({
       key: "seafood_week", zh: "海产品", value: v * 28.35, unit: "g", targetText: `≥ ${fmt(target * 28.35)} g（约 ${fmt(8 * f, 1)} 盎司）`,
-      status: s >= 1 ? "good" : s >= 0.5 ? "warn" : "bad", score: s, weight: 1,
+      status: s >= 1 ? "good" : s >= 0.5 ? "warn" : "bad", score: s,
       message: `期间海产约 ${fmt(v * 28.35)} g`, sources: ["dga_2020", "fda_fish"],
     });
   }
@@ -177,7 +186,7 @@ export function scorePeriod(args: {
     const { score, status } = limitCurve(drinks, 0, limit);
     checks.push({
       key: "alcohol_week", zh: "饮酒量", value: drinks, unit: "标准杯", targetText: limit === 0 ? "0（应避免）" : `< ${fmt(heavy, 1)} 杯（大量饮酒阈值）`,
-      status, score, weight: 1, message: `期间约 ${fmt(drinks, 1)} 标准杯`, sources: ["niaaa_drink", "dga_2025"],
+      status, score, message: `期间约 ${fmt(drinks, 1)} 标准杯`, sources: ["niaaa_drink", "dga_2025"],
     });
   }
   // 身体活动（PAG 第 2 版：每周 150–300 分钟中等强度，高强度按 2 倍计）
@@ -211,14 +220,14 @@ export function scorePeriod(args: {
     const s = Math.min(1, modMin / target);
     checks.push({
       key: "activity_week", zh: "中高强度运动", value: modMin, unit: "分钟", targetText: `≥ ${fmt(target)} 分钟（理想 ${fmt(ideal)}）`,
-      status: modMin >= ideal ? "good" : s >= 1 ? "ok" : s >= 0.5 ? "warn" : "bad", score: s, weight: 3,
+      status: modMin >= ideal ? "good" : s >= 1 ? "ok" : s >= 0.5 ? "warn" : "bad", score: s,
       message: `中等强度当量约 ${fmt(modMin)} 分钟（高强度按 2 倍计）`, sources: ["pag_2018"],
     });
     const sTarget = Math.max(1, Math.round(2 * f));
     const ss = Math.min(1, strengthDays / sTarget);
     checks.push({
       key: "strength_week", zh: "力量训练天数", value: strengthDays, unit: "天", targetText: `≥ ${sTarget} 天`,
-      status: ss >= 1 ? "good" : ss > 0 ? "warn" : "bad", score: ss, weight: 1,
+      status: ss >= 1 ? "good" : ss > 0 ? "warn" : "bad", score: ss,
       message: `力量训练 ${strengthDays} 天`, sources: ["pag_2018"],
     });
   }
@@ -226,7 +235,7 @@ export function scorePeriod(args: {
     const avg = stepsSum / stepsDays;
     checks.push({
       key: "steps_avg", zh: "日均步数（参考）", value: avg, unit: "步", targetText: "参考 ≥ 7000 步",
-      status: avg >= 7000 ? "good" : avg >= 5000 ? "warn" : "bad", score: 1, weight: 0,
+      status: avg >= 7000 ? "good" : avg >= 5000 ? "warn" : "bad", score: 1,
       message: `日均 ${fmt(avg)} 步（非官方标准，仅作参考）`, sources: ["system"],
     });
   }
@@ -235,7 +244,7 @@ export function scorePeriod(args: {
     const s = n ? Math.min(1, logged.length / Math.max(1, n * (6 / 7))) : 0;
     checks.push({
       key: "logging", zh: "记录天数", value: logged.length, unit: `/${n} 天`, targetText: "每周至少 6 天",
-      status: s >= 1 ? "good" : s >= 0.5 ? "warn" : "bad", score: s, weight: 1,
+      status: s >= 1 ? "good" : s >= 0.5 ? "warn" : "bad", score: s,
       message: `${n} 天中记录了 ${logged.length} 天`, sources: ["system"],
     });
   }
@@ -271,29 +280,27 @@ export function scorePeriod(args: {
     checks.push({
       key: "weight_rate", zh: "体重变化速度", value: ratePerWeek, unit: "kg/周",
       targetText: t.goal === "lose" ? "每周 −0.2 至 −1.0 kg" : "每周 +0.1 至 +0.5 kg",
-      status, score, weight: 1, message: `趋势体重每周 ${ratePerWeek > 0 ? "+" : ""}${fmt(ratePerWeek, 2)} kg`, sources: ["cdc_weight"],
+      status, score, message: `趋势体重每周 ${ratePerWeek > 0 ? "+" : ""}${fmt(ratePerWeek, 2)} kg`, sources: ["cdc_weight"],
     });
   }
 
-  const wSum = checks.reduce((s, c) => s + c.weight, 0);
-  const lifestyleScore = wSum ? (checks.reduce((s, c) => s + c.score * c.weight, 0) / wSum) * 100 : 0;
-  const score = avgScore == null ? null : 0.7 * avgScore + 0.3 * lifestyleScore;
 
   return {
     start,
     end,
     days: n,
     daysLogged: logged.length,
-    avgScore,
-    lifestyleScore,
-    score,
-    grade: score == null ? null : gradeOf(score),
+    avgHei,
+    avgMar,
+    score: indices.le8.score,
+    category: indices.le8.category,
+    indices,
     hei,
     avgTotals,
     avgGroups,
     itemStats: [...stats.values()],
     checks,
-    hazards: [...hz.values()].sort((a, b) => b.penalty - a.penalty),
+    hazards: [...hz.values()].sort((a, b) => b.days - a.days),
     energy: {
       avgIntake,
       avgTdee,

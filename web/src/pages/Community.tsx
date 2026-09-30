@@ -35,7 +35,7 @@ export default function Community() {
                 <>
                   <div>
                     <div className="row between small" style={{ marginBottom: 4 }}>
-                      <span className="sec">近 14 天评分</span>
+                      <span className="sec">近 14 天膳食质量（HEI-2020）</span>
                       <span className="muted tnum">均分 {fmt(avg)}</span>
                     </div>
                     <div className="sparkline" role="img" aria-label={`近 14 天平均 ${fmt(avg)} 分`}>

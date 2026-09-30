@@ -2,7 +2,7 @@ import { Router } from "express";
 import { all, get, run, tx } from "../db/index.ts";
 import { config } from "../config.ts";
 import {
-  hashPassword, verifyPassword, createSession, destroySession, requireAuth, newApiToken,
+  hashPassword, verifyPassword, createSession, destroySession, requireAuth, newApiToken, createAppToken,
 } from "../auth.ts";
 import { ah, bad, num, str, oneOf, HttpError } from "../lib/http.ts";
 import { isDate, todayIn } from "../lib/dates.ts";
@@ -56,7 +56,43 @@ accountRouter.post(
       hashPassword(password),
       color,
     );
-    createSession(res, Number(r.lastInsertRowid));
+    const uid = Number(r.lastInsertRowid);
+    // App 注册：传 device_name 时直接返回 Bearer 令牌
+    if (req.body.device_name) return { ok: true, ...createAppToken(uid, String(req.body.device_name)) };
+    createSession(res, uid);
+    return { ok: true };
+  }),
+);
+
+/** App 登录：返回 Bearer 令牌（请求头 Authorization: Bearer <token>），适用于移动端或第三方客户端 */
+accountRouter.post(
+  "/auth/token",
+  ah((req) => {
+    const username = str(req.body.username, { name: "用户名" });
+    const password = str(req.body.password, { name: "密码" });
+    const u = get<UserRow>("SELECT * FROM users WHERE username = ?", username);
+    if (!u || !verifyPassword(password, u.password_hash)) throw new HttpError(401, "用户名或密码错误");
+    const device = str(req.body.device_name, { optional: true, max: 60 }) || "App";
+    return { ...createAppToken(u.id, device), user: publicUser(u) };
+  }),
+);
+
+accountRouter.get(
+  "/auth/sessions",
+  requireAuth,
+  ah((req) =>
+    all<{ id: number; kind: string; device_name: string | null; created_at: string | null; last_used_at: string | null; expires_at: string }>(
+      "SELECT rowid AS id, kind, device_name, created_at, last_used_at, expires_at FROM sessions WHERE user_id = ? ORDER BY last_used_at DESC",
+      req.user!.id,
+    ),
+  ),
+);
+
+accountRouter.delete(
+  "/auth/sessions/:id",
+  requireAuth,
+  ah((req) => {
+    run("DELETE FROM sessions WHERE rowid = ? AND user_id = ?", Number(req.params.id), req.user!.id);
     return { ok: true };
   }),
 );
@@ -128,6 +164,8 @@ accountRouter.put(
     const physiology = sex === "female" ? oneOf(b.physiology, ["none", "pregnant", "lactating"] as const, "none") : "none";
     const sodiumMode = oneOf(b.sodium_mode, ["cdrr", "aha"] as const, "cdrr");
     const conditions = Array.isArray(b.conditions) ? b.conditions.filter((c: unknown) => CONDITIONS.some((x) => x.key === c)) : [];
+    const nicotine = oneOf(b.nicotine, ["unknown", "never", "former_5y", "former_1_5y", "former_lt1y", "ecig", "current"] as const, "unknown");
+    const secondhand = b.secondhand_smoke ? 1 : 0;
     let tz = str(b.timezone, { optional: true, max: 64 }) || "Asia/Shanghai";
     try {
       new Intl.DateTimeFormat("en", { timeZone: tz });
@@ -138,12 +176,13 @@ accountRouter.put(
     const existed = get("SELECT user_id FROM profiles WHERE user_id = ?", uid);
     tx(() => {
       run(
-        `INSERT INTO profiles (user_id, sex, birth_date, height_cm, weight_kg, activity_level, goal, goal_rate_kg_week, target_weight_kg, physiology, sodium_mode, conditions, timezone, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        `INSERT INTO profiles (user_id, sex, birth_date, height_cm, weight_kg, activity_level, goal, goal_rate_kg_week, target_weight_kg, physiology, sodium_mode, conditions, timezone, nicotine, secondhand_smoke, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
          ON CONFLICT(user_id) DO UPDATE SET sex=excluded.sex, birth_date=excluded.birth_date, height_cm=excluded.height_cm, weight_kg=excluded.weight_kg,
            activity_level=excluded.activity_level, goal=excluded.goal, goal_rate_kg_week=excluded.goal_rate_kg_week, target_weight_kg=excluded.target_weight_kg,
-           physiology=excluded.physiology, sodium_mode=excluded.sodium_mode, conditions=excluded.conditions, timezone=excluded.timezone, updated_at=excluded.updated_at`,
-        uid, sex, birth, height, weight, level, goal, rate, target, physiology, sodiumMode, JSON.stringify(conditions), tz,
+           physiology=excluded.physiology, sodium_mode=excluded.sodium_mode, conditions=excluded.conditions, timezone=excluded.timezone,
+           nicotine=excluded.nicotine, secondhand_smoke=excluded.secondhand_smoke, updated_at=excluded.updated_at`,
+        uid, sex, birth, height, weight, level, goal, rate, target, physiology, sodiumMode, JSON.stringify(conditions), tz, nicotine, secondhand,
       );
       // 首次建档时把当前体重记入体重记录
       if (!existed) {

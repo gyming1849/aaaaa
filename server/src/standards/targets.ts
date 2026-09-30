@@ -23,6 +23,9 @@ export interface Profile {
   sodium_mode: "cdrr" | "aha";
   conditions: string[];
   timezone: string;
+  /** 吸烟 / 尼古丁暴露（AHA Life's Essential 8） */
+  nicotine?: "unknown" | "never" | "former_5y" | "former_1_5y" | "former_lt1y" | "ecig" | "current";
+  secondhand_smoke?: boolean;
 }
 
 export const CONDITIONS = [

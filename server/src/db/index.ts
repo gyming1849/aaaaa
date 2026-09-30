@@ -191,6 +191,43 @@ const MIGRATIONS: string[] = [
     UNIQUE (user_id, period, start_date)
   );
   `,
+  // v2：App 令牌、睡眠、血压、化验指标、吸烟状况（用于 AHA Life's Essential 8）
+  `
+  ALTER TABLE sessions ADD COLUMN kind TEXT NOT NULL DEFAULT 'web';
+  ALTER TABLE sessions ADD COLUMN device_name TEXT;
+  ALTER TABLE sessions ADD COLUMN created_at TEXT;
+  ALTER TABLE sessions ADD COLUMN last_used_at TEXT;
+
+  ALTER TABLE activity_days ADD COLUMN sleep_hours REAL;
+  ALTER TABLE activity_days ADD COLUMN stand_hours REAL;
+
+  ALTER TABLE body_metrics ADD COLUMN sbp REAL;
+  ALTER TABLE body_metrics ADD COLUMN dbp REAL;
+  ALTER TABLE body_metrics ADD COLUMN bp_treated INTEGER NOT NULL DEFAULT 0;
+
+  ALTER TABLE profiles ADD COLUMN nicotine TEXT NOT NULL DEFAULT 'unknown';
+  ALTER TABLE profiles ADD COLUMN secondhand_smoke INTEGER NOT NULL DEFAULT 0;
+
+  ALTER TABLE exercises ADD COLUMN avg_hr REAL;
+  ALTER TABLE exercises ADD COLUMN device_kcal REAL;
+
+  CREATE TABLE lab_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    date TEXT NOT NULL,
+    total_chol REAL,           -- mg/dL
+    hdl REAL,                  -- mg/dL
+    non_hdl REAL,              -- mg/dL（未填时由总胆固醇 − HDL 计算）
+    ldl REAL,                  -- mg/dL
+    lipid_treated INTEGER NOT NULL DEFAULT 0,
+    fasting_glucose REAL,      -- mg/dL
+    hba1c REAL,                -- %
+    diabetes INTEGER NOT NULL DEFAULT 0,
+    note TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX idx_labs_user_date ON lab_results(user_id, date);
+  `,
 ];
 
 function migrate() {

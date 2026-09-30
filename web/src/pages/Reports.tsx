@@ -4,7 +4,8 @@ import { api, waitJob } from "../api";
 import { useApp, useLoad } from "../lib/app";
 import type { PeriodScore } from "../types";
 import { addDays, fmt, localToday, monthEnd, monthStart, weekStart } from "../lib/format";
-import { Loading, Meter, ScoreRing, Seg, StatusBadge, IarcChip } from "../components/ui";
+import { Loading, Meter, Seg, StatusBadge, IarcChip } from "../components/ui";
+import { Le8Card, WcrfCard } from "../components/HealthIndices";
 
 export default function Reports() {
   const { me, toast } = useApp();
@@ -45,7 +46,7 @@ export default function Reports() {
       <div className="page-head">
         <div>
           <h1>周期报告</h1>
-          <div className="sub">每周一自动生成上周报告，每月 1 日生成上月报告（含 AI 点评）</div>
+          <div className="sub">总分采用美国心脏协会 Life's Essential 8；每周一自动生成上周报告，每月 1 日生成上月报告（含 AI 点评）</div>
         </div>
         <div className="row wrap">
           <Seg value={kind} onChange={(k) => { setKind(k); setAnchor(k === "week" ? addDays(weekStart(today), -7) : today); }} options={[{ key: "week", label: "周报" }, { key: "month", label: "月报" }]} />
@@ -61,24 +62,22 @@ export default function Reports() {
       {data && (
         <div className="stack" style={{ opacity: loading ? 0.55 : 1 }}>
           <div className="grid g-hero">
-            <div className="card">
-              <div className="card-head"><h2>周期得分</h2><span className="hint">= 70% 日均分 + 30% 生活方式分</span></div>
-              <div className="hero-score">
-                <ScoreRing score={data.score} grade={data.grade ? `${data.grade.key} · ${data.grade.zh}` : "无记录"} />
-                <div className="col grow" style={{ gap: 12, minWidth: 200 }}>
-                  <Meter name="日均评分" value={data.avgScore ?? 0} unit="/ 100" max={100} status={(data.avgScore ?? 0) >= 70 ? "good" : (data.avgScore ?? 0) >= 55 ? "warn" : "bad"} />
-                  <Meter name="生活方式（运动、红肉、海产、饮酒…）" value={data.lifestyleScore} unit="/ 100" max={100} status={data.lifestyleScore >= 70 ? "good" : data.lifestyleScore >= 50 ? "warn" : "bad"} />
-                  <Meter name="HEI-2020（按周期总量）" value={data.hei?.total ?? 0} unit="/ 100" max={100} decimals={1} status={(data.hei?.total ?? 0) >= 70 ? "good" : (data.hei?.total ?? 0) >= 55 ? "warn" : "bad"} />
-                  <span className="small muted">{data.daysLogged}/{data.days} 天有记录</span>
-                </div>
-              </div>
-            </div>
+            <Le8Card ix={data.indices} title="周期总分：心血管健康 LE8" subtitle={`AHA Life's Essential 8 · ${data.daysLogged}/${data.days} 天有记录`} />
             <AiSummary data={data} gen={gen} onGenerate={generate} provider={me?.ai.provider ?? "mock"} />
           </div>
 
+          <div className="grid g4">
+            <div className="card stat-card"><div className="stat"><span className="label">HEI-2020（按周期总摄入）</span><span className="value">{fmt(data.hei?.total, 1)}<small>/ 100</small></span><span className="delta">美国人平均 58</span></div></div>
+            <div className="card stat-card"><div className="stat"><span className="label">HEI-2020 日均</span><span className="value">{fmt(data.avgHei, 1)}<small>/ 100</small></span></div></div>
+            <div className="card stat-card"><div className="stat"><span className="label">微量营养素 MAR 日均</span><span className="value">{fmt(data.avgMar)}<small>/ 100</small></span></div></div>
+            <div className="card stat-card"><div className="stat"><span className="label">防癌建议 WCRF/AICR</span><span className="value">{fmt(data.indices.wcrf.score, 2)}<small>/ {data.indices.wcrf.max}</small></span></div></div>
+          </div>
+
+          <WcrfCard ix={data.indices} subtitle={`${data.start} 至 ${data.end}`} />
+
           <div className="grid g2">
             <div className="card">
-              <div className="card-head"><h3>周期性指标</h3></div>
+              <div className="card-head"><h3>其他按周评估的指标</h3><span className="hint">只标状态，不加权</span></div>
               <div className="list">
                 {data.checks.map((c) => (
                   <div key={c.key} className="list-item" style={{ alignItems: "flex-start" }}>
@@ -116,11 +115,11 @@ export default function Reports() {
 
           {data.hazards.length > 0 && (
             <div className="card">
-              <div className="card-head"><h3>风险物</h3></div>
+              <div className="card-head"><h3>致癌物与风险物警示</h3><span className="hint">只作警示；加工肉、红肉、酒精、含糖饮料已计入 WCRF 评分</span></div>
               <div className="row wrap">
                 {data.hazards.map((h) => (
                   <span key={h.key} className="chip" style={{ padding: "6px 12px" }}>
-                    <b>{h.zh}</b> <IarcChip group={h.iarc} /> {h.days} 天 · {fmt(h.dose)} {h.unit} · −{fmt(h.penalty, 1)} 分
+                    <b>{h.zh}</b> <IarcChip group={h.iarc} /> {h.days} 天 · {fmt(h.dose)} {h.unit}
                   </span>
                 ))}
               </div>
