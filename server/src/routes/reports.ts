@@ -124,6 +124,7 @@ reportsRouter.get(
         date: d.date,
         hasData: d.hasData,
         score: d.score == null ? null : round(d.score),
+        total: d.total.score == null ? null : round(d.total.score),
         categories: Object.fromEntries(d.categories.map((c) => [c.key, round(c.score)])),
         hazardCount: d.hazards.filter((h) => h.key !== "red_meat" || h.dose >= 72).length,
         hei: d.hei ? round(d.hei.total) : null,
@@ -180,7 +181,7 @@ export async function generateAndStoreSummary(uid: number, start: string, end: s
     `INSERT INTO reports (user_id, period, start_date, end_date, score, detail, ai_summary) VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(user_id, period, start_date) DO UPDATE SET end_date = excluded.end_date, score = excluded.score, detail = excluded.detail,
        ai_summary = excluded.ai_summary, created_at = datetime('now')`,
-    uid, periodKind, start, end, period.score, JSON.stringify({ score: period.score, avgHei: period.avgHei, avgMar: period.avgMar, daysLogged: period.daysLogged }),
+    uid, periodKind, start, end, period.score, JSON.stringify({ score: period.score, total: period.total.score, avgHei: period.avgHei, avgMar: period.avgMar, daysLogged: period.daysLogged }),
     summary ? JSON.stringify(summary) : null,
   );
   return summary;

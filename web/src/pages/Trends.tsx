@@ -127,7 +127,7 @@ function SummaryTiles({ period, days }: { period: PeriodScore | null; days: Tren
   const e = period?.energy;
   return (
     <div className="grid g4">
-      <div className="card stat-card"><div className="stat"><span className="label">心血管健康 LE8</span><span className="value">{fmt(period?.score)}<small>{period?.category ? `/ 100 · ${period.category.zh}` : ""}</small></span><span className="delta">HEI 日均 {fmt(avgScore)} · {logged.length}/{days.length} 天有记录</span></div></div>
+      <div className="card stat-card"><div className="stat"><span className="label">区间总分</span><span className="value">{fmt(period?.total.score)}<small>/ 100</small></span><span className="delta">LE8 {fmt(period?.score)} · HEI 日均 {fmt(avgScore)} · {logged.length}/{days.length} 天有记录</span></div></div>
       <div className="card stat-card"><div className="stat"><span className="label">日均摄入 / 消耗</span><span className="value">{fmt(avg(logged.map((d) => d.intake)))}<small>/ {fmt(avg(days.map((d) => d.tdee)))} kcal</small></span></div></div>
       <div className="card stat-card"><div className="stat"><span className="label">趋势体重变化</span>
         <span className="value">{e?.actualChangeKg != null ? `${e.actualChangeKg > 0 ? "+" : ""}${fmt(e.actualChangeKg, 1)}` : "—"}<small>kg</small></span>

@@ -5,6 +5,7 @@
 // - 其他营养素、限量（钠、添加糖、饱和脂肪、酒精、咖啡因、UL…）、能量平衡：只标“达标 / 不达标”，不另设权重
 // - 致癌物与风险物：按 IARC 分级给出警示，不另设扣分；加工肉、红肉、酒精、含糖饮料在 WCRF/AICR 防癌评分中计分
 // - 周期与近 7 天的综合健康分：AHA Life's Essential 8（见 le8.ts）、WCRF/AICR（见 wcrf.ts）
+// - 另有综合总分（本站自定权重，见 composite.ts），与上面的分数并列展示
 //
 // 规则详细说明见 docs/scoring.md，前端“标准库”页面也会完整展示。
 
@@ -13,11 +14,12 @@ import { computeHei, HEI_COMPONENTS } from "../standards/hei.ts";
 import { HAZARDS, HAZARD_MAP } from "../standards/hazards.ts";
 import { eer, stepsNetKcal } from "../standards/energy.ts";
 import type { Profile, Targets } from "../standards/targets.ts";
+import { dailyComposite } from "./composite.ts";
 import type {
   DayData, DailyScore, ScoreItem, HazardResult, EnergyResult, CategoryResult, Status, MarResult,
 } from "./types.ts";
 
-export const SCORING_VERSION = 2;
+export const SCORING_VERSION = 3;
 
 /** HEI-2020 美国人平均分（USDA，NHANES 2017–2018，2 岁及以上） */
 export const HEI_US_MEAN = 58;
@@ -220,7 +222,8 @@ export function scoreDay(day: DayData, profile: Profile, t: Targets): DailyScore
   };
 
   if (!hasData) {
-    return { ...base, score: null, categories: [], items: [], hei: null, mar: null, hazards: [], top: { issues: [], wins: [] } };
+    const total = dailyComposite({ hasData, hei: null, mar: null, energy, day });
+    return { ...base, score: null, total, categories: [], items: [], hei: null, mar: null, hazards: [], top: { issues: [], wins: [] } };
   }
 
   const items: ScoreItem[] = [];
@@ -420,6 +423,7 @@ export function scoreDay(day: DayData, profile: Profile, t: Targets): DailyScore
   return {
     ...base,
     score: hei ? hei.total : null,
+    total: dailyComposite({ hasData, hei: hei ? hei.total : null, mar: mar ? mar.value : null, energy, day }),
     categories,
     items,
     hei: hei ? { total: hei.total, components: hei.components.map((c) => ({ key: c.key, zh: c.zh, score: c.score, max: c.max, value: c.value, unit: c.unit, hint: c.hint })) } : null,

@@ -256,7 +256,8 @@ function Rules() {
   return (
     <div className="stack">
       <div className="banner accent" style={{ fontSize: 14.5 }}>
-        评分规则 v2：全部采用已发表、经同行评议的评分体系，不自定权重。“美国心脏协会 LE8”“WCRF/AICR”“MAR”都是等权合成；HEI-2020 的组分分值由 USDA 规定。
+        评分规则 v2：各分项全部采用已发表、经同行评议的评分体系。“美国心脏协会 LE8”“WCRF/AICR”“MAR”都是等权合成；HEI-2020 的组分分值由 USDA 规定。
+        <br />总分（满分 100）是本站按自定权重把分项合成的一个数字，没有权威出处：每天 = HEI × 50% + MAR × 15% + 能量平衡 × 15% + 身体活动 × 20%；每周 = 周期 HEI × 40% + MAR 日均 × 10% + LE8 × 35% + WCRF（折算百分制）× 15%。缺少的分项不计入，其余按权重折算。
       </div>
       <div className="card stack">
         <h2>每日：膳食质量 HEI-2020 + 微量营养素 MAR</h2>

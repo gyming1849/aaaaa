@@ -75,11 +75,16 @@ export interface Energy {
   tef: number; tdee: number; method: string; target: number; balance: number;
 }
 
+export interface CompositePart { key: string; zh: string; weight: number; score: number | null; points: number | null; note: string }
+/** 综合总分（本站自定权重） */
+export interface CompositeScore { score: number | null; parts: CompositePart[]; missing: string[] }
+
 export interface DailyScore {
   date: string;
   hasData: boolean;
   /** HEI-2020 总分 */
   score: number | null;
+  total: CompositeScore;
   categories: { key: "hei" | "mar"; zh: string; score: number; source: string; note: string }[];
   items: ScoreItem[];
   hei: { total: number; components: { key: string; zh: string; score: number; max: number; value: number; unit: string; hint: string }[] } | null;
@@ -168,7 +173,7 @@ export interface DayResponse {
 }
 
 export interface TrendDay {
-  date: string; hasData: boolean; score: number | null; categories: Record<string, number>; hazardCount: number; hei: number | null; mar: number | null;
+  date: string; hasData: boolean; score: number | null; total: number | null; categories: Record<string, number>; hazardCount: number; hei: number | null; mar: number | null;
   intake: number; tdee: number; target: number; exerciseKcal: number; energyMethod: string; weight: number | null; trend: number | null;
   steps: number | null; activeKcal: number | null; completeness: string; totals: Vec; groups: Vec; macroPct: Record<string, number>; upfPct: number;
   statuses: Record<string, Status>;
@@ -180,6 +185,7 @@ export interface PeriodScore {
   start: string; end: string; days: number; daysLogged: number; avgHei: number | null; avgMar: number | null;
   /** LE8 */
   score: number | null;
+  total: CompositeScore;
   category: { key: string; zh: string } | null;
   indices: HealthIndices;
   hei: { total: number; components: { key: string; zh: string; score: number; max: number; value: number; unit: string; hint: string }[] } | null;
@@ -188,7 +194,7 @@ export interface PeriodScore {
   checks: PeriodCheck[];
   hazards: { key: string; zh: string; iarc: string; dose: number; unit: string; days: number }[];
   energy: { avgIntake: number | null; avgTdee: number; totalBalance: number; predictedChangeKg: number; trendStart: number | null; trendEnd: number | null; actualChangeKg: number | null; empiricalTdee: number | null; ratePerWeek: number | null };
-  series: { date: string; score: number | null; intake: number; tdee: number; weight: number | null; trend: number | null }[];
+  series: { date: string; score: number | null; total: number | null; intake: number; tdee: number; weight: number | null; trend: number | null }[];
   aiSummary: { headline: string; summary: string; wins: string[]; issues: string[]; actions: string[] } | null;
   full: boolean;
 }

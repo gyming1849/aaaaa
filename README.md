@@ -9,6 +9,8 @@
 | 每天 | **HEI-2020 膳食质量**（USDA/NCI，美国人平均 58） | 微量营养素充足 MAR；近 7 天的 Life's Essential 8 与 WCRF/AICR 防癌评分 |
 | 每周 / 每月 | **AHA Life's Essential 8 心血管健康**（饮食、运动、尼古丁、睡眠、BMI、血脂、血糖、血压） | 周期 HEI-2020、HEI 日均、MAR 日均、WCRF/AICR 防癌评分（0–6） |
 
+另外，每天和每周都有一个**综合总分**（满分 100）：把上面的分项按本站自定的权重合成（每天：HEI 50 + MAR 15 + 能量平衡 15 + 身体活动 20；每周：HEI 40 + MAR 10 + LE8 35 + WCRF 15），权重没有权威出处，详见 docs/scoring.md 第 0 节。
+
 钠、添加糖、饱和脂肪、各营养素是否达到 RDA、能量平衡、IARC 致癌物等逐项标出“达标 / 不达标”和差多少，但不再另外折算成分数。
 
 ![今日概览](docs/screenshots/today.png)

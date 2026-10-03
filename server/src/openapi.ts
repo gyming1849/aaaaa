@@ -193,14 +193,19 @@ function schemas(): Record<string, S> {
       secondhand_smoke: { type: "boolean" },
     }, ["sex", "birth_date", "height_cm", "weight_kg"]),
     Targets: obj({}),
-    DailyScore: obj({}),
+    CompositeScore: obj({
+      score: nnum(),
+      parts: arr(obj({ key: str(), zh: str(), weight: num(), score: nnum(), points: nnum(), note: str() })),
+      missing: arr(str()),
+    }),
+    DailyScore: obj({ score: nnum(), total: ref("CompositeScore") }),
     HealthIndices: obj({
       windowDays: int(), loggedDays: int(),
       le8: obj({ score: nnum(), available: int(), components: arr(obj({ key: str(), zh: str(), points: nnum(), value: str(), rule: str(), missing: str() })) }),
       wcrf: obj({ score: nnum(), max: num(), components: arr(obj({})) }),
       mepa: obj({ score: int(), days: int(), items: arr(obj({})) }),
     }),
-    PeriodScore: obj({}),
+    PeriodScore: obj({ score: nnum(), total: ref("CompositeScore") }),
     Activity: obj({ date, steps: nnum(), active_kcal: nnum(), resting_kcal: nnum(), distance_km: nnum(), exercise_min: nnum(), sleep_hours: nnum(), stand_hours: nnum(), source: str() }),
     Workout: obj({
       description: str(), activity_key: str("", { enum: ACTIVITIES.map((a) => a.key) }), met: num(), duration_min: num(), distance_km: num(),

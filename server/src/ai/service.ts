@@ -472,6 +472,12 @@ export async function weeklySummary(p: PeriodScore, topFoods: { name: string; co
   const payload = {
     period: `${p.start} ~ ${p.end}`,
     days_logged: `${p.daysLogged}/${p.days}`,
+    site_composite_total: {
+      note: "This site's own weighted composite (not a published index); shown to the user as the period total out of 100",
+      score: round(p.total.score),
+      parts: p.total.parts.map((x) => ({ part: x.zh, weight: x.weight, score: round(x.score), points: round(x.points, 1) })),
+      missing: p.total.missing,
+    },
     aha_life_essential_8: {
       score: round(p.score),
       category: p.category?.zh ?? null,

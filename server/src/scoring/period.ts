@@ -10,6 +10,7 @@ import { ACTIVITY_MAP } from "../standards/met.ts";
 import { KCAL_PER_KG } from "../standards/energy.ts";
 import type { Profile, Targets } from "../standards/targets.ts";
 import { limitCurve } from "./daily.ts";
+import { periodComposite, type CompositeScore } from "./composite.ts";
 import type { HealthIndices } from "./indices.ts";
 import type { DailyScore, ExerciseRecord, ActivityRecord, Status } from "./types.ts";
 import { diffDays } from "../lib/dates.ts";
@@ -63,6 +64,8 @@ export interface PeriodScore {
   avgMar: number | null;
   /** 周期总分 = LE8 */
   score: number | null;
+  /** 综合总分（本站自定权重，见 composite.ts） */
+  total: CompositeScore;
   category: { key: string; zh: string } | null;
   indices: HealthIndices;
   hei: ReturnType<typeof computeHei>;
@@ -82,7 +85,7 @@ export interface PeriodScore {
     empiricalTdee: number | null;
     ratePerWeek: number | null;
   };
-  series: { date: string; score: number | null; intake: number; tdee: number; weight: number | null; trend: number | null }[];
+  series: { date: string; score: number | null; total: number | null; intake: number; tdee: number; weight: number | null; trend: number | null }[];
 }
 
 export function scorePeriod(args: {
@@ -293,6 +296,7 @@ export function scorePeriod(args: {
     avgHei,
     avgMar,
     score: indices.le8.score,
+    total: periodComposite({ daysLogged: logged.length, hei: hei ? hei.total : null, avgMar, le8: indices.le8.score, wcrf: indices.wcrf }),
     category: indices.le8.category,
     indices,
     hei,
@@ -315,6 +319,7 @@ export function scorePeriod(args: {
     series: days.map((d, i) => ({
       date: d.date,
       score: d.score,
+      total: d.total.score,
       intake: d.energy.intake,
       tdee: d.energy.tdee,
       weight: trend[i]?.weight ?? null,

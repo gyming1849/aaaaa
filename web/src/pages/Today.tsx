@@ -8,6 +8,7 @@ import { fmt, mealZh, localToday } from "../lib/format";
 import { DateNav, Empty, IarcChip, Loading, Meter, ScoreRing, SourceLinks, StatusBadge, Seg, statusColor } from "../components/ui";
 import { ActivityRecognizer } from "../components/ActivityRecognizer";
 import { Le8Card, WcrfCard } from "../components/HealthIndices";
+import { TotalParts } from "../components/TotalScore";
 
 export default function Today() {
   const { username } = useParams();
@@ -172,17 +173,18 @@ function ScoreCard({ s }: { s: DailyScore }) {
   return (
     <div className="card">
       <div className="card-head">
-        <h2>今日膳食质量</h2>
-        {s.hasData && <span className="hint">HEI-2020（USDA/NCI） · <Link to="/standards?tab=rules">评分依据</Link></span>}
+        <h2>今日总分</h2>
+        {s.hasData && <span className="hint">四项按权重合成 · <Link to="/standards?tab=rules">评分依据</Link></span>}
       </div>
       <div className="hero-score">
-        <ScoreRing score={s.score} grade={s.score != null ? `美国平均 ${meta?.heiUsMean ?? 58}` : "暂无记录"} />
+        <ScoreRing score={s.total.score} grade={s.total.score != null ? "满分 100" : "暂无记录"} />
         <div className="col grow" style={{ gap: 12, minWidth: 200 }}>
           {s.hei ? (
             <>
+              <TotalParts total={s.total} />
               <Meter name="HEI-2020 膳食质量" value={s.hei.total} unit="/ 100" max={100} decimals={1}
                 status={s.hei.total >= 80 ? "good" : s.hei.total >= 51 ? "warn" : "bad"}
-                foot="13 个组分按每 1000 kcal 的密度计分，分值由 USDA 规定" />
+                foot={`13 个组分按每 1000 kcal 的密度计分，分值由 USDA 规定；美国人平均 ${meta?.heiUsMean ?? 58}`} />
               {mar && (
                 <Meter name="微量营养素充足 MAR" value={mar.value} unit="/ 100" max={100}
                   status={mar.value >= 90 ? "good" : mar.value >= 70 ? "warn" : "bad"}

@@ -7,6 +7,7 @@ import { computeWcrf } from "../src/scoring/wcrf.ts";
 import { computeMepa } from "../src/scoring/mepa.ts";
 import { computeIndices } from "../src/scoring/indices.ts";
 import { weightTrend, scorePeriod } from "../src/scoring/period.ts";
+import { energyBalancePoints, activityPoints, periodComposite } from "../src/scoring/composite.ts";
 import { computeHei } from "../src/standards/hei.ts";
 import { eer, bmrMifflin } from "../src/standards/energy.ts";
 import { lifeStageFor } from "../src/standards/dri.ts";
@@ -202,6 +203,7 @@ test("empty day has no score", () => {
   const s = scoreDay(day([]), profile, t);
   assert.equal(s.score, null);
   assert.equal(s.hasData, false);
+  assert.equal(s.total.score, null);
 });
 
 test("weight trend smooths noise and period computes empirical TDEE", () => {
@@ -217,6 +219,36 @@ test("weight trend smooths noise and period computes empirical TDEE", () => {
   assert.ok(p.energy.actualChangeKg! < 0);
   assert.ok(p.energy.empiricalTdee! > 2200, `emp ${p.energy.empiricalTdee}`);
   assert.ok(p.checks.find((c) => c.key === "activity_week"));
-  assert.equal(p.score, p.indices.le8.score); // 周期总分 = LE8
+  assert.equal(p.score, p.indices.le8.score); // score 字段仍为 LE8
+  assert.ok(p.total.score != null && p.total.score >= 0 && p.total.score <= 100);
   assert.ok(p.indices.le8.components.find((c) => c.key === "bmi")!.points != null);
+});
+
+test("composite total: weights sum to 100 and missing parts are rescaled", () => {
+  const near = (a: number, b: number) => assert.ok(Math.abs(a - b) < 1e-6, `${a} ≈ ${b}`);
+  near(energyBalancePoints(2000, 2000), 100);
+  near(energyBalancePoints(2200, 2000), 100); // 偏差 10%
+  near(energyBalancePoints(2600, 2000), 50); // 偏差 30%
+  near(energyBalancePoints(3000, 2000), 0); // 偏差 50%
+  near(activityPoints(30, null), 100);
+  near(activityPoints(15, 4000), 50);
+  near(activityPoints(0, 12000), 100);
+
+  const t = computeTargets(profile, "2026-09-01");
+  const d = day([[item("早餐", { energy_kcal: 900 })], [item("午餐", { energy_kcal: 900 })]]);
+  const noAct = scoreDay(d, profile, t);
+  assert.equal(noAct.total.parts.reduce((s, p) => s + p.weight, 0), 100);
+  assert.deepEqual(noAct.total.missing, ["身体活动"]);
+  // 没有活动数据：其余三项按 80 分权重折算到 100
+  const expected = noAct.total.parts.filter((p) => p.score != null).reduce((s, p) => s + p.score! * p.weight, 0) / 80;
+  near(noAct.total.score!, expected);
+
+  d.activity = { steps: 8000, active_kcal: null, resting_kcal: null, distance_km: null, exercise_min: null, source: "manual" };
+  const withAct = scoreDay(d, profile, t);
+  assert.deepEqual(withAct.total.missing, []);
+  near(withAct.total.parts.find((p) => p.key === "activity")!.points!, 20);
+
+  const p = periodComposite({ daysLogged: 7, hei: 80, avgMar: 90, le8: 70, wcrf: { score: 3, max: 6 } });
+  near(p.score!, 80 * 0.4 + 90 * 0.1 + 70 * 0.35 + 50 * 0.15);
+  assert.equal(periodComposite({ daysLogged: 0, hei: null, avgMar: null, le8: 70, wcrf: { score: 0, max: 0 } }).score, null);
 });

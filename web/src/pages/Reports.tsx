@@ -6,6 +6,7 @@ import type { PeriodScore } from "../types";
 import { addDays, fmt, localToday, monthEnd, monthStart, weekStart } from "../lib/format";
 import { Loading, Meter, Seg, StatusBadge, IarcChip } from "../components/ui";
 import { Le8Card, WcrfCard } from "../components/HealthIndices";
+import { TotalParts } from "../components/TotalScore";
 
 export default function Reports() {
   const { me, toast } = useApp();
@@ -46,7 +47,7 @@ export default function Reports() {
       <div className="page-head">
         <div>
           <h1>周期报告</h1>
-          <div className="sub">总分采用美国心脏协会 Life's Essential 8；每周一自动生成上周报告，每月 1 日生成上月报告（含 AI 点评）</div>
+          <div className="sub">总分由膳食质量、微量营养素、心血管健康 LE8 和防癌建议按权重合成；每周一自动生成上周报告，每月 1 日生成上月报告（含 AI 点评）</div>
         </div>
         <div className="row wrap">
           <Seg value={kind} onChange={(k) => { setKind(k); setAnchor(k === "week" ? addDays(weekStart(today), -7) : today); }} options={[{ key: "week", label: "周报" }, { key: "month", label: "月报" }]} />
@@ -61,8 +62,15 @@ export default function Reports() {
       {loading && !data && <Loading />}
       {data && (
         <div className="stack" style={{ opacity: loading ? 0.55 : 1 }}>
+          <div className="card stat-card">
+            <div className="stat">
+              <span className="label">{kind === "week" ? "本周总分" : "本月总分"}</span>
+              <span className="value">{fmt(data.total.score)}<small>/ 100</small></span>
+            </div>
+            <TotalParts total={data.total} />
+          </div>
           <div className="grid g-hero" style={{ alignItems: "start" }}>
-            <Le8Card ix={data.indices} title="周期总分：心血管健康 LE8" subtitle={`AHA Life's Essential 8 · ${data.daysLogged}/${data.days} 天有记录`} />
+            <Le8Card ix={data.indices} title="心血管健康 LE8" subtitle={`AHA Life's Essential 8 · ${data.daysLogged}/${data.days} 天有记录`} />
             <div className="stack">
               <div className="grid" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
                 <div className="card stat-card"><div className="stat"><span className="label">HEI-2020（按周期总摄入）</span><span className="value">{fmt(data.hei?.total, 1)}<small>/ 100</small></span><span className="delta">美国人平均 58</span></div></div>

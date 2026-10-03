@@ -1,4 +1,5 @@
 import type { NutrientVector } from "../standards/nutrients.ts";
+import type { CompositeScore } from "./composite.ts";
 
 export interface HazardEntry {
   key: string;
@@ -127,6 +128,8 @@ export interface DailyScore {
   hasData: boolean;
   /** 当日膳食质量 = HEI-2020 总分（0–100） */
   score: number | null;
+  /** 综合总分（本站自定权重，见 composite.ts） */
+  total: CompositeScore;
   categories: CategoryResult[];
   items: ScoreItem[];
   hei: { total: number; components: { key: string; zh: string; score: number; max: number; value: number; unit: string; hint: string }[] } | null;
