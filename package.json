@@ -1,0 +1,16 @@
+{
+  "name": "nutrilog",
+  "private": true,
+  "version": "0.1.0",
+  "description": "多人每日饮食摄入记录与健康评分网站",
+  "type": "module",
+  "workspaces": ["server", "web"],
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "dev": "npm run dev -w server & npm run dev -w web",
+    "build": "npm run build -w web",
+    "start": "npm run start -w server",
+    "test": "npm test -w server",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w web"
+  }
+}
