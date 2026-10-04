@@ -2,7 +2,7 @@ import { Router } from "express";
 import { all, get, run, tx } from "../db/index.ts";
 import { config } from "../config.ts";
 import {
-  hashPassword, verifyPassword, createSession, destroySession, requireAuth, newApiToken, createAppToken,
+  hashPassword, verifyPassword, createSession, destroySession, requireAuth, newApiToken, createAppToken, currentTokenHash,
 } from "../auth.ts";
 import { ah, bad, num, str, oneOf, HttpError } from "../lib/http.ts";
 import { isDate, todayIn } from "../lib/dates.ts";
@@ -80,12 +80,13 @@ accountRouter.post(
 accountRouter.get(
   "/auth/sessions",
   requireAuth,
-  ah((req) =>
-    all<{ id: number; kind: string; device_name: string | null; created_at: string | null; last_used_at: string | null; expires_at: string }>(
-      "SELECT rowid AS id, kind, device_name, created_at, last_used_at, expires_at FROM sessions WHERE user_id = ? ORDER BY last_used_at DESC",
+  ah((req) => {
+    const current = currentTokenHash(req);
+    return all<{ id: number; kind: string; device_name: string | null; created_at: string | null; last_used_at: string | null; expires_at: string; token_hash: string }>(
+      "SELECT rowid AS id, kind, device_name, created_at, last_used_at, expires_at, token_hash FROM sessions WHERE user_id = ? ORDER BY last_used_at DESC",
       req.user!.id,
-    ),
-  ),
+    ).map(({ token_hash, ...row }) => ({ ...row, current: token_hash === current }));
+  }),
 );
 
 accountRouter.delete(

@@ -27,6 +27,8 @@ interface Op {
   body?: S;
   multipart?: S;
   response?: S;
+  /** 200 响应为二进制文件（如图片）时的 Content-Type */
+  binary?: string;
 }
 
 const job = obj({ job_id: str("AI 任务 ID，轮询 GET /ai/jobs/{id}") }, ["job_id"]);
@@ -53,9 +55,41 @@ const OPS: Record<string, Record<string, Op>> = {
   "/auth/login": { post: { tag: "账号", summary: "网页登录（设置 Cookie）", auth: "none", body: obj({ username: str(), password: str() }, ["username", "password"]), response: ok } },
   "/auth/logout": { post: { tag: "账号", summary: "退出（同时注销当前 Bearer 令牌）", response: ok } },
   "/auth/me": { get: { tag: "账号", summary: "当前用户、档案、AI 状态", response: obj({ user: ref("User"), profile: ref("Profile"), today: date, ai: obj({ provider: str(), model: str() }) }) } },
-  "/auth/sessions": { get: { tag: "账号", summary: "已登录的设备 / 令牌列表", response: arr(obj({ id: int(), kind: str(), device_name: str(), last_used_at: str(), expires_at: str() })) } },
+  "/auth/sessions": { get: { tag: "账号", summary: "已登录的设备 / 令牌列表", response: arr(obj({ id: int(), kind: str(), device_name: str(), last_used_at: str(), expires_at: str(), current: { type: "boolean" } })) } },
   "/auth/sessions/{id}": { delete: { tag: "账号", summary: "注销某个设备的令牌", params: [{ name: "id", in: "path", schema: int(), required: true }], response: ok } },
   "/auth/password": { post: { tag: "账号", summary: "修改密码", body: obj({ old_password: str(), new_password: str() }, ["old_password", "new_password"]), response: ok } },
+  "/auth/config": {
+    get: {
+      tag: "App", summary: "注册配置与服务器能力（公开）", auth: "none",
+      description: "invite_required 表示注册需要邀请码（不返回邀请码本身）；features 列出本服务器支持的 App 新能力。",
+      response: obj({ allow_registration: { type: "boolean" }, invite_required: { type: "boolean" }, min_password: int(), server_version: str(), features: arr(str("", { enum: ["health_sync", "account_delete", "token_refresh", "session_current", "ai_consent"] })) }),
+    },
+  },
+  "/auth/refresh": {
+    post: {
+      tag: "App", summary: "续期 App 令牌（返回新令牌，旧令牌最多再有效 24 小时）",
+      description: "仅限 Bearer App 令牌（nla_…）；网页 Cookie 会话返回 400 只有 App 令牌可以续期。旧令牌的有效期缩短到 24 小时内（只缩短、不延长），响应丢失时客户端可以用旧令牌重试。",
+      response: obj({ token: str(), expires_at: str() }),
+    },
+  },
+  "/ai/consent": {
+    get: {
+      tag: "App", summary: "App 内的 AI 第三方处理同意状态",
+      description: "granted 为 null 表示从未在 App 中回答过。用苹果健康同步过数据、但没有同意的用户不会自动生成 AI 周报/月报点评。",
+      response: obj({ granted: { type: ["boolean", "null"] }, updated_at: { type: ["string", "null"] } }),
+    },
+    put: {
+      tag: "App", summary: "记录 App 内的 AI 第三方处理同意",
+      body: obj({ granted: { type: "boolean" } }, ["granted"]), response: ok,
+    },
+  },
+  "/account/delete": {
+    post: {
+      tag: "App", summary: "注销账号（删除全部数据，需要密码确认）",
+      description: "删除用户及其餐食、食物库、身体与活动数据、报告、照片与全部登录令牌。错误：400 密码不能为空 / 密码不正确。",
+      body: obj({ password: str() }, ["password"]), response: ok,
+    },
+  },
 
   "/profile": { put: { tag: "档案", summary: "创建或更新个人档案（修改后历史评分自动重算）", body: ref("Profile"), response: obj({ ok: { type: "boolean" }, profile: ref("Profile") }) } },
   "/profile/targets": { get: { tag: "档案", summary: "个性化目标（DRI、限量、能量）", params: [{ name: "date", in: "query", schema: date }], response: ref("Targets") } },
@@ -63,6 +97,7 @@ const OPS: Record<string, Record<string, Op>> = {
   "/settings/token": { post: { tag: "档案", summary: "生成个人 Token（用于 iPhone 快捷指令上传健康数据）", response: obj({ token: str() }) } },
 
   "/uploads": { post: { tag: "饮食", summary: "上传照片（食物、包装、营养成分表、健康截图）", multipart: obj({ photos: arr(str("", { format: "binary" })) }), response: obj({ photos: arr(obj({ id: str("在 AI 接口的 photos 中引用"), url: str() })) }) } },
+  "/uploads/{id}": { get: { tag: "饮食", summary: "读取本人上传的照片（需要登录；其他成员的照片返回 404）", params: [{ name: "id", in: "path", schema: str(), required: true }], binary: "image/*" } },
   "/ai/status": { get: { tag: "AI", summary: "当前 AI 模式与模型", response: obj({ provider: str("", { enum: ["cli", "api", "mock"] }), model: str(), web_search: { type: "boolean" } }) } },
   "/ai/meal": {
     post: {
@@ -140,6 +175,7 @@ const OPS: Record<string, Record<string, Op>> = {
     get: { tag: "身体与活动", summary: "化验指标（胆固醇、血糖）", response: arr(ref("LabResult")) },
     post: { tag: "身体与活动", summary: "记录化验指标", body: ref("LabResult"), response: obj({ id: int() }) },
   },
+  "/labs/{id}": { delete: { tag: "身体与活动", summary: "删除一条化验记录", params: [{ name: "id", in: "path", schema: int(), required: true }], response: ok } },
   "/activity": { get: { tag: "身体与活动", summary: "每日活动与运动", params: [{ name: "start", in: "query", schema: date }, { name: "end", in: "query", schema: date }], response: obj({ days: arr(ref("Activity")), exercises: arr(ref("Exercise")) }) } },
   "/activity/{date}": { put: { tag: "身体与活动", summary: "手动填写某天的步数、活动能量、睡眠等（覆盖）", params: [{ name: "date", in: "path", schema: date, required: true }], body: ref("Activity"), response: ok } },
   "/activity/commit": { post: { tag: "身体与活动", summary: "确认合并 AI 识别或手动填写的活动 / 身体 / 运动数据", body: obj({ date, activity: ref("Activity"), body: obj({ weight_kg: nnum(), body_fat_pct: nnum(), sbp: nnum(), dbp: nnum() }), workouts: arr(ref("Workout")) }), response: obj({ ok: { type: "boolean" }, workouts: int() }) } },
@@ -157,6 +193,24 @@ const OPS: Record<string, Record<string, Op>> = {
     },
   },
   "/health/import": { post: { tag: "身体与活动", summary: "导入苹果健康 export.zip / export.xml", multipart: obj({ file: str("", { format: "binary" }), since: date }), response: obj({ ok: { type: "boolean" }, records: int(), days: int(), weights: int() }) } },
+  "/health/sync": {
+    post: {
+      tag: "身体与活动", summary: "苹果健康（HealthKit）批量同步：每日汇总、身体数据、体能训练、删除（幂等）",
+      description:
+        "需要个人档案。每段可选；上限 days 400、samples 2000、workouts 500、deleted 2000（超出 400 单次同步数据过多，请分批上传）。" +
+        "单项校验失败进入该段的 rejected，不影响其他项。用户手动修改过的当天字段保留（kept_manual），overwrite_manual=true 时覆盖。" +
+        "网页删除的同步记录不会再被同步回来（skipped_tombstoned）。",
+      body: ref("HealthSyncRequest"), response: ref("HealthSyncResponse"),
+    },
+  },
+  "/health/sync/state": { get: { tag: "App", summary: "苹果健康同步状态（各设备最近同步、数量、旧来源统计）", response: ref("HealthSyncState") } },
+  "/health/sync/unlink": {
+    post: {
+      tag: "App", summary: "断开苹果健康同步；delete_data=true 时删除全部已同步数据（不分设备）",
+      body: obj({ device_id: str(), delete_data: { type: "boolean" } }, ["device_id"]),
+      response: obj({ ok: { type: "boolean" }, deleted: obj({ body: int(), exercises: int(), days: int() }) }),
+    },
+  },
 
   "/trends": { get: { tag: "报告", summary: "逐日趋势序列（评分、摄入、消耗、体重、营养素、状态）", params: [{ name: "start", in: "query", schema: date }, { name: "end", in: "query", schema: date }, userParam], response: obj({ start: date, end: date, days: arr(obj({})) }) } },
   "/period": { get: { tag: "报告", summary: "周期报告（周 / 月 / 任意区间）", params: [{ name: "start", in: "query", schema: date }, { name: "end", in: "query", schema: date }, userParam], response: ref("PeriodScore") } },
@@ -211,12 +265,69 @@ function schemas(): Record<string, S> {
       description: str(), activity_key: str("", { enum: ACTIVITIES.map((a) => a.key) }), met: num(), duration_min: num(), distance_km: num(),
       in_device: { type: "boolean", description: "已含在设备活动能量中" }, avg_hr: nnum(), device_kcal: nnum(), date, time,
     }, ["duration_min"]),
-    Exercise: obj({ id: int(), date, time, description: str(), activity_key: str(), met: num(), duration_min: num(), distance_km: nnum(), kcal: num("净消耗 = (MET−1)×体重×小时"), in_device: int() }),
-    BodyMetric: obj({ id: int(), date, time, weight_kg: nnum(), body_fat_pct: nnum(), waist_cm: nnum(), sbp: nnum(), dbp: nnum(), source: str() }),
+    Exercise: obj({ id: int(), date, time, description: str(), activity_key: str(), met: num(), duration_min: num(), distance_km: nnum(), kcal: num("净消耗 = (MET−1)×体重×小时"), in_device: int(),
+      external_id: str("HealthKit 体能训练 UUID（苹果健康同步的记录）", { type: ["string", "null"] }), source_name: str("HealthKit 数据来源名称", { type: ["string", "null"] }),
+      started_at: str("开始时间 ISO-8601（带时区偏移）", { type: ["string", "null"] }), ended_at: str("结束时间 ISO-8601（带时区偏移）", { type: ["string", "null"] }),
+      hk_activity_type: { type: ["integer", "null"], description: "HKWorkoutActivityType 原始值" } }),
+    BodyMetric: obj({
+      id: int(), date, time, weight_kg: nnum(), body_fat_pct: nnum(), waist_cm: nnum(), sbp: nnum(), dbp: nnum(), source: str(),
+      external_id: str("HealthKit 样本 UUID（血压为 correlation UUID）", { type: ["string", "null"] }), source_name: str("HealthKit 数据来源名称", { type: ["string", "null"] }),
+    }),
     LabResult: obj({ date, total_chol: nnum("mg/dL"), hdl: nnum("mg/dL"), non_hdl: nnum("mg/dL"), ldl: nnum("mg/dL"), lipid_treated: { type: "boolean" }, fasting_glucose: nnum("mg/dL"), hba1c: nnum("%"), diabetes: { type: "boolean" } }),
     Food: obj({ id: int(), name: str(), brand: str(), serving_g: nnum(), serving_desc: str(), per100: ref("Nutrients"), groups100: ref("FoodGroups"), hazards100: arr(obj({ key: str(), amount_per_100g: num() })), nova_group: { type: ["integer", "null"] }, visibility: str(), mine: { type: "boolean" } }),
     FoodInput: obj({ name: str(), brand: str(), aliases: arr(str()), category: str(), serving_g: num(), serving_desc: str(), per100: ref("Nutrients"), groups100: ref("FoodGroups"), hazards100: arr(obj({ key: str(), amount_per_100g: num() })), nova_group: int(), ingredients: str(), visibility: str("", { enum: ["private", "public"] }) }, ["name"]),
+    ...healthSyncSchemas(),
     Error: obj({ error: str() }),
+  };
+}
+
+/** POST /health/sync、GET /health/sync/state 的数据结构 */
+function healthSyncSchemas(): Record<string, S> {
+  const nstr = (description?: string): S => str(description, { type: ["string", "null"] });
+  const rejected = arr(obj({ date: nstr("days 段"), uuid: nstr("samples / workouts 段"), error: str("中文错误信息") }, ["error"]));
+  const counts = { inserted: int(), updated: int(), unchanged: int(), skipped_tombstoned: int("已被网页删除（墓碑）而跳过"), rejected };
+  const dayFields = ["steps", "active_kcal", "resting_kcal", "distance_km", "exercise_min", "stand_hours", "sleep_hours"];
+  const kindState = obj({ last_synced_at: str("YYYY-MM-DD HH:MM:SS（UTC）"), min_date: nstr(), max_date: nstr(), cursor: nstr() }, ["last_synced_at"]);
+  return {
+    SyncDay: obj({
+      date,
+      steps: nnum("0–200000"), active_kcal: nnum("kcal，0–10000"), resting_kcal: nnum("kcal，0–5000"), distance_km: nnum("0–500"),
+      exercise_min: nnum("0–1440"), stand_hours: nnum("0–24"), sleep_hours: nnum("前一晚睡眠，0–24"),
+      clear: arr(str("HealthKit 已没有数据、需要清空的字段", { enum: dayFields })),
+    }, ["date"]),
+    SyncSample: obj({
+      uuid: str("HK 样本 UUID（血压为 correlation UUID），≤64"), type: str("", { enum: ["body_mass", "body_fat", "waist", "blood_pressure"] }),
+      date, time, start: str("ISO-8601 带时区偏移"),
+      value: num("body_mass kg 20–350 / body_fat % 2–70 / waist cm 30–250"), sbp: num("60–260"), dbp: num("30–160"),
+      bp_treated: { type: "boolean" }, source_name: str("≤60"),
+    }, ["uuid", "type", "date", "time"]),
+    SyncWorkout: obj({
+      uuid: str("HKWorkout UUID，≤64"), date, time: str("开始时间 HH:MM", { pattern: "^\\d{2}:\\d{2}$" }), start: str("ISO-8601"), end: str("ISO-8601"),
+      hk_activity_type: { type: ["integer", "null"] }, activity_key: str("未知 key 按 other_moderate 处理", { enum: ACTIVITIES.map((a) => a.key) }),
+      description: str("≤80"), met: num("1–25，缺省用运动表 MET"), duration_min: num("1–1440"), distance_km: nnum("0–1000"),
+      avg_hr: nnum("30–230"), device_kcal: nnum("0–10000"), in_device: { type: "boolean", description: "已含在当天设备活动能量中" }, source_name: str("≤60"),
+    }, ["uuid", "date", "time", "duration_min"]),
+    HealthSyncRequest: obj({
+      device_id: str("App 安装 ID（UUID），≤64"), device_name: str("≤60"), timezone: str("客户端计算日期所用时区"),
+      overwrite_manual: { type: "boolean", description: "true 时覆盖用户手动修改过的当天字段" },
+      days: arr(ref("SyncDay")), samples: arr(ref("SyncSample")), workouts: arr(ref("SyncWorkout")),
+      deleted: arr(str("HealthKit 已删除对象的 UUID")),
+      cursors: obj({ days: str(), samples: str(), workouts: str() }),
+    }, ["device_id"]),
+    HealthSyncResponse: obj({
+      ok: { type: "boolean" }, timezone: str(), server_today: date, timezone_mismatch: { type: "boolean" },
+      days: obj({ upserted: int(), unchanged: int(), kept_manual: arr(obj({ date, fields: arr(str()) })), rejected }),
+      samples: obj(counts),
+      workouts: obj({ ...counts, possible_duplicates: arr(obj({ uuid: str(), exercise_id: int(), description: str() })) }),
+      deleted: obj({ body: int(), exercises: int(), not_found: int() }),
+      invalidated_from: nstr("重新计算评分的起始日期"),
+    }, ["ok", "timezone", "server_today", "timezone_mismatch", "invalidated_from"]),
+    HealthSyncState: obj({
+      timezone: str(), server_today: date,
+      devices: arr(obj({ device_id: str(), device_name: nstr(), kinds: obj({ days: kindState, samples: kindState, workouts: kindState }) })),
+      counts: obj({ days: int(), body: int(), workouts: int() }),
+      legacy_sources: obj({ apple_shortcut_days: int(), apple_export_days: int() }),
+    }),
   };
 }
 
@@ -233,7 +344,7 @@ export function buildOpenApi(base: string): S {
         security: auth === "none" ? [] : auth === "user_or_personal" ? [{ bearerAuth: [] }, { personalToken: [] }, { cookieAuth: [] }] : [{ bearerAuth: [] }, { cookieAuth: [] }],
         ...(op.params ? { parameters: op.params.map((p) => ({ ...p, required: p.required ?? p.in === "path" })) } : {}),
         responses: {
-          "200": { description: "成功", content: { "application/json": { schema: op.response ?? ok } } },
+          "200": { description: "成功", content: op.binary ? { [op.binary]: { schema: str("", { format: "binary" }) } } : { "application/json": { schema: op.response ?? ok } } },
           "400": { description: "参数错误", content: { "application/json": { schema: ref("Error") } } },
           ...(auth !== "none" ? { "401": { description: "未登录或令牌失效", content: { "application/json": { schema: ref("Error") } } } } : {}),
         },

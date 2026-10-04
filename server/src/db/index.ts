@@ -228,6 +228,62 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_labs_user_date ON lab_results(user_id, date);
   `,
+  // v3：苹果健康（HealthKit）直连同步：外部 ID、墓碑、按天快照、同步状态
+  `
+  ALTER TABLE body_metrics ADD COLUMN external_id TEXT;      -- HK sample UUID（血压为 correlation UUID）
+  ALTER TABLE body_metrics ADD COLUMN source_name TEXT;      -- HKSource 名称，如 “Withings”“XX 的 Apple Watch”
+  CREATE UNIQUE INDEX idx_body_ext ON body_metrics(user_id, external_id) WHERE external_id IS NOT NULL;
+
+  ALTER TABLE exercises ADD COLUMN external_id TEXT;         -- HKWorkout UUID
+  ALTER TABLE exercises ADD COLUMN source_name TEXT;
+  ALTER TABLE exercises ADD COLUMN started_at TEXT;          -- ISO-8601 带时区偏移
+  ALTER TABLE exercises ADD COLUMN ended_at TEXT;
+  ALTER TABLE exercises ADD COLUMN hk_activity_type INTEGER; -- HKWorkoutActivityType 原始值
+  CREATE UNIQUE INDEX idx_ex_ext ON exercises(user_id, external_id) WHERE external_id IS NOT NULL;
+
+  -- HealthKit 最近一次写入每天各字段的值：用于判断用户是否手动改过（手动修改优先）
+  CREATE TABLE health_day_snapshots (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    date TEXT NOT NULL,
+    steps REAL, active_kcal REAL, resting_kcal REAL, distance_km REAL, exercise_min REAL, sleep_hours REAL, stand_hours REAL,
+    synced_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, date)
+  );
+
+  -- 网页 / App 删除的同步记录不会被再次同步回来
+  CREATE TABLE health_tombstones (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    external_id TEXT NOT NULL,
+    kind TEXT NOT NULL,                       -- body | exercise
+    deleted_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, external_id)
+  );
+  CREATE TRIGGER trg_body_tomb AFTER DELETE ON body_metrics
+    WHEN old.external_id IS NOT NULL AND EXISTS (SELECT 1 FROM users WHERE id = old.user_id)
+  BEGIN INSERT OR IGNORE INTO health_tombstones (user_id, external_id, kind) VALUES (old.user_id, old.external_id, 'body'); END;
+  CREATE TRIGGER trg_ex_tomb AFTER DELETE ON exercises
+    WHEN old.external_id IS NOT NULL AND EXISTS (SELECT 1 FROM users WHERE id = old.user_id)
+  BEGIN INSERT OR IGNORE INTO health_tombstones (user_id, external_id, kind) VALUES (old.user_id, old.external_id, 'exercise'); END;
+
+  CREATE TABLE health_sync_state (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    device_id TEXT NOT NULL,                  -- App 安装 ID（UUID）
+    device_name TEXT,
+    kind TEXT NOT NULL,                       -- days | samples | workouts
+    last_synced_at TEXT NOT NULL,             -- datetime('now')
+    min_date TEXT, max_date TEXT,
+    cursor TEXT,
+    PRIMARY KEY (user_id, device_id, kind)
+  );
+  `,
+  // v4：App 内对「把数据交给第三方 AI 服务商处理」的明确同意（App Store 5.1.2(i)）。只有 App 读写；网页不使用
+  `
+  CREATE TABLE ai_consent (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    granted INTEGER NOT NULL,                 -- 1 同意 / 0 不同意
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  `,
 ];
 
 function migrate() {

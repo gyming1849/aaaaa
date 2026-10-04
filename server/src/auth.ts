@@ -106,6 +106,20 @@ function userFromSession(req: Request): AuthedUser | undefined {
   return { id: row.id, username: row.username, display_name: row.display_name };
 }
 
+/** 本次请求携带的会话令牌：与 userFromSession 相同的优先级（Cookie 优先，其次非 nl_ 的 Bearer） */
+export function presentedToken(req: Request): { token: string; via: "cookie" | "bearer" } | undefined {
+  const cookie = readCookie(req, COOKIE);
+  if (cookie !== undefined) return cookie ? { token: cookie, via: "cookie" } : undefined;
+  const b = bearer(req);
+  return b && !b.startsWith("nl_") ? { token: b, via: "bearer" } : undefined;
+}
+
+/** 本次请求所用会话令牌的哈希（sessions.token_hash），用于标记“本机” */
+export function currentTokenHash(req: Request): string | undefined {
+  const t = presentedToken(req);
+  return t ? sha256(t.token) : undefined;
+}
+
 function userFromApiToken(req: Request): AuthedUser | undefined {
   const b = bearer(req);
   const token = b?.startsWith("nl_") ? b : (req.query.token as string | undefined);

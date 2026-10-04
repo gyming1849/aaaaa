@@ -4,6 +4,7 @@ import path from "node:path";
 import { config } from "./config.ts";
 import "./db/index.ts";
 import { accountRouter } from "./routes/account.ts";
+import { appRouter } from "./routes/app.ts";
 import { logRouter } from "./routes/log.ts";
 import { bodyRouter } from "./routes/body.ts";
 import { reportsRouter } from "./routes/reports.ts";
@@ -43,6 +44,7 @@ for (const prefix of ["/api/v1", "/api"]) {
   });
   app.use(prefix, docsRouter);
   app.use(prefix, accountRouter);
+  app.use(prefix, appRouter);
   app.use(prefix, bodyRouter);
   app.use(prefix, logRouter);
   app.use(prefix, reportsRouter);

@@ -38,12 +38,23 @@ async function tick() {
   }
 }
 
+/**
+ * 自动 AI 点评会把用户数据（含苹果健康同步来的血压、睡眠、能量消耗、体重）发给第三方 AI 服务商。
+ * App 里回答过「同意 / 不同意」的以回答为准；从未回答过的：用苹果健康直连同步过数据的用户（只有 App 能产生）不自动发送，
+ * 其他用户（网页）保持原来的行为。
+ */
+export function schedulerMayUseAI(uid: number): boolean {
+  const consent = get<{ granted: number }>("SELECT granted FROM ai_consent WHERE user_id = ?", uid);
+  if (consent) return consent.granted === 1;
+  return !get("SELECT 1 FROM health_sync_state WHERE user_id = ? LIMIT 1", uid);
+}
+
 async function maybeReport(uid: number, kind: "week" | "month", start: string, end: string, minDays: number) {
   if (get("SELECT id FROM reports WHERE user_id = ? AND period = ? AND start_date = ?", uid, kind, start)) return;
   const logged = get<{ n: number }>("SELECT COUNT(DISTINCT date) AS n FROM meals WHERE user_id = ? AND date BETWEEN ? AND ?", uid, start, end)?.n ?? 0;
   if (logged < minDays) return;
   try {
-    if (config.weeklyAiSummary) await generateAndStoreSummary(uid, start, end, kind);
+    if (config.weeklyAiSummary && schedulerMayUseAI(uid)) await generateAndStoreSummary(uid, start, end, kind);
   } catch (e) {
     console.error(`[scheduler] ${kind} report for user ${uid} failed:`, e instanceof Error ? e.message : e);
   }
