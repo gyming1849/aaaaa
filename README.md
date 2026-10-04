@@ -163,6 +163,7 @@ server/                 Node + Express + SQLite（node:sqlite）
   src/services/         数据装载、评分缓存、定时任务
   test/                 评分引擎单元测试
 web/                    React + Vite + ECharts 前端
+ios/                    原生 SwiftUI iOS 客户端（直连 Apple 健康），见 ios/README.md
 docs/scoring.md         离线评分标准说明
 ```
 

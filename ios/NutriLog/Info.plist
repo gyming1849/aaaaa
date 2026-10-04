@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NLDefaultServerURL</key>
+	<string>http://45.63.23.52:8787</string>
+	<key>NLPrivacyPolicyURL</key>
+	<string></string>
+	<key>NLSupportEmail</key>
+	<string></string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<key>NSHealthShareUsageDescription</key>
+	<string>食迹会读取步数、活动能量、静息能量、步行距离、锻炼分钟、站立小时、睡眠、体重、体脂、腰围、血压、心率和体能训练记录（含骑行、游泳距离），用于计算每日能量消耗与健康评分；在你点“从‘健康’App 读取”时，还会读取性别、出生日期、身高和体重来填写个人档案。数据上传到你登录的食迹服务器；当你使用 AI 识别或 AI 周报/月报点评时，服务器会把相关数值（如体重、睡眠、血压、能量消耗）发送给第三方 AI 服务商 Anthropic 处理。</string>
+	<key>NSCameraUsageDescription</key>
+	<string>拍摄食物、包装、营养成分表或健康截图，上传到你登录的食迹服务器，并由第三方 AI 服务商 Anthropic 的 Claude 识别。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>从相册选择食物照片、营养成分表或健康截图，上传到你登录的食迹服务器，并由第三方 AI 服务商 Anthropic 的 Claude 识别。</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.nutrilog.ios.healthsync.refresh</string>
+	</array>
+</dict>
+</plist>

@@ -1,0 +1,1 @@
+{"allow_registration":true,"invite_required":false,"min_password":6,"server_version":"1","features":["health_sync","account_delete","token_refresh","session_current"]}

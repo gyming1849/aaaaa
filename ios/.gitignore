@@ -1,0 +1,10 @@
+# Build output (scripts/verify.sh, scripts/logic-tests.sh)
+build/
+DerivedData/
+
+# Xcode per-user state
+xcuserdata/
+*.xcuserstate
+
+# macOS
+.DS_Store

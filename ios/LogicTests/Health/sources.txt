@@ -1,0 +1,9 @@
+# WP9 Health suite: Foundation/HealthKit-only sources (paths relative to ios/). HealthKit imports fine on macOS.
+NutriLog/Core/Models/HealthSync.swift
+NutriLog/Core/Util/LocalDay.swift
+NutriLog/Core/Health/DayAggregator.swift
+NutriLog/Core/Health/SleepAggregator.swift
+NutriLog/Core/Health/WorkoutMapper.swift
+NutriLog/Core/Health/HealthUploadPlan.swift
+NutriLog/Core/Health/HealthSyncText.swift
+NutriLog/Core/Health/HealthSyncSettings.swift

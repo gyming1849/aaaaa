@@ -1,0 +1,153 @@
+{
+ "date": "2026-10-04",
+ "age": 34,
+ "sex": "male",
+ "lifeStage": "m31_50",
+ "lifeStageZh": "男 31–50 岁",
+ "physiology": "none",
+ "sensitive": false,
+ "weightKg": 61.5,
+ "heightCm": 176,
+ "bmi": 19.8540805785124,
+ "bmiCategory": {
+  "key": "normal",
+  "zh": "正常"
+ },
+ "referenceWeightKg": 61.5,
+ "bmr": 1550,
+ "eer": 2592.86,
+ "eerMethod": "NASEM 2023 EER",
+ "goal": "maintain",
+ "goalDeltaKcal": 0,
+ "energyTarget": 2593,
+ "energyFloor": 1550,
+ "protein": {
+  "rdaG": 56,
+  "idealLowG": 73.8,
+  "idealHighG": 98.4,
+  "perKgRda": 0.8
+ },
+ "intake": {
+  "protein_g": {
+   "key": "protein_g",
+   "value": 56,
+   "kind": "RDA",
+   "source": "nasem_dri",
+   "note": "RDA 0.8 g/kg；DGA 2025–2030 建议 1.2–1.6 g/kg"
+  },
+  "fiber_g": {
+   "key": "fiber_g",
+   "value": 36,
+   "kind": "AI",
+   "source": "nasem_dri",
+   "note": "14 g / 1000 kcal × 你的能量目标"
+  },
+  "calcium_mg": {
+   "key": "calcium_mg",
+   "value": 1000,
+   "kind": "RDA",
+   "source": "nasem_dri"
+  }
+ },
+ "upper": {
+  "vit_a_ug": {
+   "value": 3000,
+   "appliesToTotal": false,
+   "note": "UL 仅针对预制维生素 A（视黄醇），不含 β-胡萝卜素"
+  }
+ },
+ "limits": {
+  "sodium_mg": {
+   "key": "sodium_mg",
+   "zh": "钠",
+   "unit": "mg",
+   "ideal": 1500,
+   "limit": 2300,
+   "idealSource": "aha_sodium",
+   "limitSource": "nasem_na_k",
+   "note": "上限为 CDRR，与 DGA 一致"
+  },
+  "added_sugars_g": {
+   "key": "added_sugars_g",
+   "zh": "添加糖",
+   "unit": "g",
+   "ideal": 36,
+   "limit": 65,
+   "idealSource": "aha_sugar",
+   "limitSource": "dga_2020",
+   "note": "DGA 2025–2030：不推荐任何添加糖，每餐不超过 10 g"
+  },
+  "sat_fat_pct": {
+   "key": "sat_fat_pct",
+   "zh": "饱和脂肪供能比",
+   "unit": "% 能量",
+   "ideal": 8,
+   "limit": 10,
+   "idealSource": "hei_2020",
+   "limitSource": "dga_2025"
+  },
+  "trans_fat_g": {
+   "key": "trans_fat_g",
+   "zh": "反式脂肪",
+   "unit": "g",
+   "ideal": 0,
+   "limit": 2.9,
+   "idealSource": "dga_2020",
+   "limitSource": "who_trans",
+   "note": "WHO：< 1% 总能量"
+  },
+  "alcohol_g": {
+   "key": "alcohol_g",
+   "zh": "酒精",
+   "unit": "g",
+   "ideal": 0,
+   "limit": 28,
+   "idealSource": "iarc_list",
+   "limitSource": "dga_2020",
+   "note": "DGA 2020–2025：男 ≤2 杯、女 ≤1 杯；DGA 2025–2030：越少越好"
+  },
+  "caffeine_mg": {
+   "key": "caffeine_mg",
+   "zh": "咖啡因",
+   "unit": "mg",
+   "ideal": 400,
+   "limit": 400,
+   "idealSource": "fda_caffeine",
+   "limitSource": "fda_caffeine"
+  },
+  "upf_pct": {
+   "key": "upf_pct",
+   "zh": "超加工食品供能比",
+   "unit": "% 能量",
+   "ideal": 20,
+   "limit": 50,
+   "idealSource": "dga_2025",
+   "limitSource": "system",
+   "note": "DGA 2025–2030 要求限制高度加工食品但未给数值；按 NOVA 4 类估算，阈值为本系统设定"
+  }
+ },
+ "amdr": {
+  "protein": [
+   10,
+   35
+  ],
+  "carb": [
+   45,
+   65
+  ],
+  "fat": [
+   20,
+   35
+  ],
+  "n6": [
+   5,
+   10
+  ],
+  "n3": [
+   0.6,
+   1.2
+  ]
+ },
+ "addedSugarPerMealG": 10,
+ "aspartameAdiMg": 2460
+}
